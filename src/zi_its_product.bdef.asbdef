@@ -1,0 +1,61 @@
+managed implementation in class zbp_i_its_product unique;
+strict ( 2 );
+with draft;
+
+define behavior for ZI_ITS_PRODUCT alias Product
+persistent table zits_product
+draft table zits_product_d
+lock master total etag LastChangedAt
+etag master LocalLastChangedAt
+authorization master ( global )
+{
+  create;
+  update;
+  delete;
+
+  //--- field characteristics ---
+  field ( mandatory : create, readonly : update ) ProductID;
+  field ( mandatory ) ProductName, Category, SalePrice, CostPrice, CurrencyCode, Unit;
+  field ( readonly ) CreatedBy, CreatedAt, LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
+
+  //--- determinations ---
+  determination setDefaults on modify { create; }
+
+  //--- validations ---
+  validation validateProductID on save { create;         field ProductID; }
+  validation validateCategory  on save { create; update; field Category; }
+  validation validatePrices    on save { create; update; field SalePrice, CostPrice, ReorderLevel; }
+
+  //--- draft actions ---
+  draft action Activate optimized;
+  draft action Discard;
+  draft action Edit;
+  draft action Resume;
+  draft determine action Prepare
+  {
+    validation validateProductID;
+    validation validateCategory;
+    validation validatePrices;
+  }
+
+  mapping for zits_product
+  {
+    ProductID          = product_id;
+    ProductName        = product_name;
+    Category           = category;
+    Brand              = brand;
+    Description        = description;
+    SalePrice          = sale_price;
+    CostPrice          = cost_price;
+    CurrencyCode       = currency_code;
+    StockQty           = stock_qty;
+    ReorderLevel       = reorder_level;
+    Unit               = unit;
+    IsActive           = is_active;
+    CreatedBy          = created_by;
+    CreatedAt          = created_at;
+    LocalLastChangedBy = local_last_changed_by;
+    LocalLastChangedAt = local_last_changed_at;
+    LastChangedAt      = last_changed_at;
+  }
+}

@@ -1,0 +1,4 @@
+@EndUserText.label: 'Service Definition for IT Shop Product'
+define service ZUI_ITS_PRODUCT {
+  expose ZC_ITS_PRODUCT as Product;
+}

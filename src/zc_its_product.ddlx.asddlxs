@@ -1,0 +1,76 @@
+@Metadata.layer: #CORE
+
+@UI: {
+  headerInfo: {
+    typeName: 'Product',
+    typeNamePlural: 'Products',
+    title:       { type: #STANDARD, value: 'ProductName' },
+    description: { type: #STANDARD, value: 'ProductID' }
+  }
+}
+
+annotate view ZC_ITS_PRODUCT with
+{
+  @UI.facet: [ { id: 'General',
+                 purpose: #STANDARD,
+                 type: #IDENTIFICATION_REFERENCE,
+                 label: 'Product Details',
+                 position: 10 } ]
+
+  @UI: { lineItem:       [ { position: 10, importance: #HIGH } ],
+         identification: [ { position: 10 } ],
+         selectionField: [ { position: 10 } ] }
+  ProductID;
+
+  @UI: { lineItem:       [ { position: 20, importance: #HIGH } ],
+         identification: [ { position: 20 } ],
+         selectionField: [ { position: 20 } ] }
+  ProductName;
+
+  @UI: { lineItem:       [ { position: 30, importance: #HIGH } ],
+         identification: [ { position: 30 } ],
+         selectionField: [ { position: 30 } ] }
+  Category;
+
+  @UI: { lineItem:       [ { position: 40, importance: #MEDIUM } ],
+         identification: [ { position: 40 } ] }
+  Brand;
+
+  @UI: { lineItem:       [ { position: 50, importance: #HIGH } ],
+         identification: [ { position: 50 } ] }
+  SalePrice;
+
+  @UI: { identification: [ { position: 60 } ] }
+  CostPrice;
+
+  @UI: { identification: [ { position: 65 } ] }
+  CurrencyCode;
+
+  @UI: { lineItem:       [ { position: 70, importance: #HIGH } ],
+         identification: [ { position: 70 } ] }
+  StockQty;
+
+  @UI: { identification: [ { position: 80 } ] }
+  ReorderLevel;
+
+  @UI: { identification: [ { position: 85 } ] }
+  Unit;
+
+  @UI: { identification: [ { position: 90 } ] }
+  Description;
+
+  @UI: { lineItem:       [ { position: 100, importance: #LOW } ],
+         identification: [ { position: 100 } ] }
+  IsActive;
+
+  @UI.hidden: true
+  CreatedBy;
+  @UI.hidden: true
+  CreatedAt;
+  @UI.hidden: true
+  LocalLastChangedBy;
+  @UI.hidden: true
+  LocalLastChangedAt;
+  @UI.hidden: true
+  LastChangedAt;
+}
