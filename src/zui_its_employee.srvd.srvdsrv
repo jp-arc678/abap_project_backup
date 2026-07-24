@@ -1,0 +1,4 @@
+@EndUserText.label: 'Service Definition for IT Shop Employee'
+define service ZUI_ITS_EMPLOYEE {
+  expose ZC_ITS_EMPLOYEE as Employee;
+}

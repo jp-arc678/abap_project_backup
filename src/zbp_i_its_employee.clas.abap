@@ -1,0 +1,5 @@
+CLASS zbp_i_its_employee DEFINITION PUBLIC ABSTRACT FINAL FOR BEHAVIOR OF zi_its_employee.
+ENDCLASS.
+
+CLASS zbp_i_its_employee IMPLEMENTATION.
+ENDCLASS.
