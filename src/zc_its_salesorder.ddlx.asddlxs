@@ -1,0 +1,61 @@
+@Metadata.layer: #CORE
+
+@UI: {
+  headerInfo: {
+    typeName: 'Sales Order',
+    typeNamePlural: 'Sales Orders',
+    title:       { type: #STANDARD, value: 'SONumber' },
+    description: { type: #STANDARD, value: 'OverallStatus' }
+  }
+}
+
+annotate view ZC_ITS_SALESORDER with
+{
+  @UI.facet: [
+    { id: 'General', purpose: #STANDARD, type: #IDENTIFICATION_REFERENCE,
+      label: 'General Information', position: 10 },
+    { id: 'Items',   purpose: #STANDARD, type: #LINEITEM_REFERENCE,
+      label: 'Items', position: 20, targetElement: '_Item' }
+  ]
+
+  @UI.hidden: true
+  SOUUID;
+
+  @UI: { lineItem:       [ { position: 10, importance: #HIGH } ],
+         identification: [ { position: 10 } ],
+         selectionField: [ { position: 10 } ] }
+  SONumber;
+
+  @UI: { lineItem:       [ { position: 20, importance: #MEDIUM } ],
+         identification: [ { position: 20 } ] }
+  SalespersonID;
+
+  @UI: { lineItem:       [ { position: 30, importance: #MEDIUM } ],
+         identification: [ { position: 30 } ] }
+  SalesDate;
+
+  @UI: { lineItem:       [ { position: 40, importance: #HIGH } ],
+         identification: [ { position: 40 } ] }
+  TotalAmount;
+
+  @UI: { identification: [ { position: 45 } ] }
+  CurrencyCode;
+
+  @UI: { lineItem:       [ { position: 50, importance: #LOW } ],
+         identification: [ { position: 50 } ],
+         selectionField: [ { position: 50 } ] }
+  OrderType;
+
+  @UI: { lineItem:       [ { position: 60, importance: #HIGH } ],
+         identification: [ { position: 60 } ],
+         selectionField: [ { position: 60 } ] }
+  OverallStatus;
+
+  @UI: { identification: [ { position: 70 } ] }
+  RejectionReason;
+
+  @UI.hidden: true
+  ApprovedBy;
+  @UI.hidden: true
+  ApprovedAt;
+}

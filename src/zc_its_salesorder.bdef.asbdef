@@ -1,0 +1,24 @@
+projection;
+strict ( 2 );
+use draft;
+
+define behavior for ZC_ITS_SALESORDER alias SalesOrder
+{
+  use create;
+  use update;
+  use delete;
+  use association _Item { create; }
+
+  use action Edit;
+  use action Activate;
+  use action Discard;
+  use action Resume;
+  use action Prepare;
+}
+
+  define behavior for ZC_ITS_SALESORDERITEM alias SalesOrderItem
+  {
+    use update;
+    use delete;
+    use association _SalesOrder;
+  }

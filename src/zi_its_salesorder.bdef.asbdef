@@ -1,0 +1,76 @@
+managed implementation in class zbp_i_its_salesorder unique;
+strict ( 2 );
+with draft;
+
+define behavior for ZI_ITS_SALESORDER alias SalesOrder
+persistent table zits_so
+draft table zits_so_d
+lock master total etag LastChangedAt
+etag master LocalLastChangedAt
+authorization master ( global )
+{
+  create;
+  update;
+  delete;
+  association _Item { create; }
+
+  field ( readonly, numbering : managed ) SOUUID;
+  field ( readonly ) SONumber, OrderType, OverallStatus, TotalAmount,
+                     ApprovedBy, ApprovedAt,
+                     CreatedBy, CreatedAt, LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
+
+  draft action Activate optimized;
+  draft action Discard;
+  draft action Edit;
+  draft action Resume;
+  draft determine action Prepare;
+
+  mapping for zits_so
+  {
+    SOUUID             = so_uuid;
+    SONumber           = so_number;
+    OrderType          = order_type;
+    OverallStatus      = overall_status;
+    SalespersonID      = salesperson_id;
+    SalesDate          = sales_date;
+    TotalAmount        = total_amount;
+    CurrencyCode       = currency_code;
+    ApprovedBy         = approved_by;
+    ApprovedAt         = approved_at;
+    RejectionReason    = rejection_reason;
+    CreatedBy          = created_by;
+    CreatedAt          = created_at;
+    LocalLastChangedBy = local_last_changed_by;
+    LocalLastChangedAt = local_last_changed_at;
+    LastChangedAt      = last_changed_at;
+  }
+}
+
+ define behavior for ZI_ITS_SALESORDERITEM alias SalesOrderItem
+ persistent table zits_soitem
+ draft table zits_soitem_d
+ lock dependent by _SalesOrder
+ authorization dependent by _SalesOrder
+ etag master LocalLastChangedAt
+ {
+   update;
+   delete;
+   association _SalesOrder;
+
+   field ( readonly, numbering : managed ) SOItemUUID;
+   field ( readonly ) ParentUUID, Amount, LocalLastChangedAt;
+
+   mapping for zits_soitem
+   {
+     SOItemUUID         = soitem_uuid;
+     ParentUUID         = parent_uuid;
+     ItemPos            = item_pos;
+     ProductID          = product_id;
+     Quantity           = quantity;
+     Unit               = unit;
+     SalePrice          = sale_price;
+     Amount             = amount;
+     CurrencyCode       = currency_code;
+     LocalLastChangedAt = local_last_changed_at;
+   }
+ }

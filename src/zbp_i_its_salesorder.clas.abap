@@ -1,0 +1,5 @@
+CLASS zbp_i_its_salesorder DEFINITION PUBLIC ABSTRACT FINAL FOR BEHAVIOR OF zi_its_salesorder.
+ENDCLASS.
+
+CLASS zbp_i_its_salesorder IMPLEMENTATION.
+ENDCLASS.
