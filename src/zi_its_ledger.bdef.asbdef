@@ -1,0 +1,30 @@
+managed implementation in class zbp_i_its_ledger unique;
+strict ( 2 );
+
+define behavior for ZI_ITS_LEDGER alias Ledger
+persistent table zits_ledger
+lock master
+authorization master ( global )
+{
+  create;
+  // ไม่มี update, ไม่มี delete — append-only ledger
+
+  field ( readonly ) EntryTypeName, SignedAmount, CreatedBy, CreatedAt;
+
+  field ( numbering : managed ) LedgerUUID;
+
+  mapping for zits_ledger
+  {
+    LedgerUUID   = ledger_uuid;
+    PostingDate  = posting_date;
+    EntryType    = entry_type;
+    Amount       = amount;
+    CurrencyCode = currency_code;
+    RefDocType   = ref_doc_type;
+    RefDocNumber = ref_doc_number;
+    RefDocUUID   = ref_doc_uuid;
+    Description  = description;
+    CreatedBy    = created_by;
+    CreatedAt    = created_at;
+  }
+}
