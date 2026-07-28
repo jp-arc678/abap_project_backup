@@ -18,13 +18,19 @@ authorization master ( global )
   field ( readonly ) SONumber, OrderType, OverallStatus, TotalAmount,
                      ApprovedBy, ApprovedAt,
                      CreatedBy, CreatedAt, LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
+  determination setHeaderDefaults on modify { create; }
 
+
+  validation validateItems on save { create; update; }
   draft action Activate optimized;
   draft action Discard;
   draft action Edit;
   draft action Resume;
-  draft determine action Prepare;
-
+  draft determine action Prepare
+  {
+    validation validateItems;
+    validation SalesOrderItem~validateQuantity;
+  }
   mapping for zits_so
   {
     SOUUID             = so_uuid;
@@ -59,7 +65,9 @@ authorization master ( global )
 
    field ( readonly, numbering : managed ) SOItemUUID;
    field ( readonly ) ParentUUID, Amount, LocalLastChangedAt;
-
+   determination fetchProductData on modify { field ProductID, Quantity; }
+   determination calcTotalAmount   on modify { field Quantity, SalePrice; create; delete;}
+   validation validateQuantity on save { create; update; field Quantity; }
    mapping for zits_soitem
    {
      SOItemUUID         = soitem_uuid;

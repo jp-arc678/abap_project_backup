@@ -2,6 +2,7 @@
 
 annotate view ZC_ITS_SALESORDERITEM with
 {
+  
   @UI.hidden: true
   SOItemUUID;
   @UI.hidden: true
@@ -11,8 +12,12 @@ annotate view ZC_ITS_SALESORDERITEM with
   ItemPos;
 
   @UI: { lineItem:       [ { position: 20, importance: #HIGH } ],
-         identification: [ { position: 20 } ] }
+         identification: [ { position: 20 } ],
+         textArrangement: #TEXT_FIRST }
   ProductID;
+
+  @UI.hidden: true
+  ProductName;
 
   @UI: { lineItem:       [ { position: 30, importance: #HIGH } ],
          identification: [ { position: 30 } ] }

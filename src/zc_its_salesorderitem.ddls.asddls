@@ -7,7 +7,11 @@ define view entity ZC_ITS_SALESORDERITEM
   key SOItemUUID,
       ParentUUID,
       ItemPos,
+      @ObjectModel.text.element: [ 'ProductName' ]
+      @Consumption.valueHelpDefinition: [ { entity: { name: 'ZI_ITS_PRODUCT', element: 'ProductID' } } ]
       ProductID,
+      _Product.ProductName as ProductName,
+
       @Semantics.quantity.unitOfMeasure: 'Unit'
       Quantity,
       Unit,
@@ -15,8 +19,10 @@ define view entity ZC_ITS_SALESORDERITEM
       SalePrice,
       @Semantics.amount.currencyCode: 'CurrencyCode'
       Amount,
+       @Consumption.valueHelpDefinition: [ { entity: { name: 'I_CurrencyStdVH', element: 'Currency' } } ]
       CurrencyCode,
       LocalLastChangedAt,
 
       _SalesOrder : redirected to parent ZC_ITS_SALESORDER
+      
 }

@@ -17,7 +17,6 @@ annotate view ZC_ITS_SALESORDER with
     { id: 'Items',   purpose: #STANDARD, type: #LINEITEM_REFERENCE,
       label: 'Items', position: 20, targetElement: '_Item' }
   ]
-
   @UI.hidden: true
   SOUUID;
 
@@ -27,8 +26,12 @@ annotate view ZC_ITS_SALESORDER with
   SONumber;
 
   @UI: { lineItem:       [ { position: 20, importance: #MEDIUM } ],
-         identification: [ { position: 20 } ] }
+         identification: [ { position: 20 } ],
+         textArrangement: #TEXT_FIRST }
   SalespersonID;
+
+  @UI.hidden: true
+  SalespersonName;
 
   @UI: { lineItem:       [ { position: 30, importance: #MEDIUM } ],
          identification: [ { position: 30 } ] }
