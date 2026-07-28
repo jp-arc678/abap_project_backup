@@ -19,6 +19,9 @@ CLASS lhc_SalesOrder DEFINITION INHERITING FROM cl_abap_behavior_handler.
     METHODS validateQuantity FOR VALIDATE ON SAVE
       IMPORTING keys FOR SalesOrderItem~validateQuantity.
 
+    METHODS validateStock FOR VALIDATE ON SAVE
+      IMPORTING keys FOR SalesOrderItem~validateStock.
+
     METHODS assignSONumber FOR DETERMINE ON SAVE
       IMPORTING keys FOR SalesOrder~assignSONumber.
     METHODS get_instance_features FOR INSTANCE FEATURES
@@ -338,6 +341,40 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 
   ENDMETHOD.
 
+  METHOD validateStock.
+
+    READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+      ENTITY SalesOrderItem
+        FIELDS ( ProductID Quantity )
+        WITH CORRESPONDING #( keys )
+      RESULT DATA(items).
+
+    LOOP AT items INTO DATA(item).
+
+      IF item-ProductID IS INITIAL.
+        CONTINUE.
+      ENDIF.
+
+      "--- อ่านสต๊อกปัจจุบันของสินค้า ---
+      SELECT SINGLE FROM zits_product
+        FIELDS stock_qty
+        WHERE product_id = @item-ProductID
+        INTO @DATA(available_stock).
+
+      IF item-Quantity > available_stock.
+        APPEND VALUE #( %tky = item-%tky ) TO failed-salesorderitem.
+        APPEND VALUE #( %tky              = item-%tky
+                        %element-Quantity = if_abap_behv=>mk-on
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = |Not enough stock: only { available_stock } available| )
+                      ) TO reported-salesorderitem.
+      ENDIF.
+
+    ENDLOOP.
+
+  ENDMETHOD.
+
   METHOD Submit.
 
     READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
@@ -503,27 +540,97 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 *--------------------------------------------------------------------*
   METHOD Complete.
 
+    "==== 1) อ่าน header ที่จะ complete (เฉพาะสถานะ Confirmed) ====
     READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
-      ENTITY SalesOrder FIELDS ( OverallStatus )
-      WITH CORRESPONDING #( keys )
+      ENTITY SalesOrder
+        FIELDS ( OverallStatus SONumber CurrencyCode TotalAmount )
+        WITH CORRESPONDING #( keys )
       RESULT DATA(orders).
 
-    DATA updates TYPE TABLE FOR UPDATE zi_its_salesorder.
+    DATA header_updates TYPE TABLE FOR UPDATE zi_its_salesorder.
+    DATA product_updates TYPE TABLE FOR UPDATE zi_its_product.
+    DATA ledger_creates TYPE TABLE FOR CREATE zi_its_ledger.
+
+    GET TIME STAMP FIELD DATA(now).
+    DATA(today) = cl_abap_context_info=>get_system_date( ).
 
     LOOP AT orders INTO DATA(order).
+
       IF order-OverallStatus <> 'C'.
         CONTINUE.
       ENDIF.
+
+      "==== 2) อ่าน item ทั้งหมดของใบนี้ ====
+      READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+        ENTITY SalesOrder BY \_Item
+          FIELDS ( ProductID Quantity )
+          WITH VALUE #( ( %tky = order-%tky ) )
+        RESULT DATA(items).
+
+      "==== 3) เตรียมตัดสต๊อกแต่ละสินค้า ====
+      LOOP AT items INTO DATA(item).
+        IF item-ProductID IS INITIAL.
+          CONTINUE.
+        ENDIF.
+
+        SELECT SINGLE FROM zits_product
+          FIELDS stock_qty
+          WHERE product_id = @item-ProductID
+          INTO @DATA(current_stock).
+
+        APPEND VALUE #( %key-ProductID = item-ProductID
+                        StockQty       = current_stock - item-Quantity )
+               TO product_updates.
+      ENDLOOP.
+
+      "==== 4) เตรียม ledger entry (income) ของใบนี้ ====
+      APPEND VALUE #( %cid         = |LED_{ order-SONumber }|
+                      PostingDate  = today
+                      EntryType    = 'I'
+                      Amount       = order-TotalAmount
+                      CurrencyCode = order-CurrencyCode
+                      RefDocType   = 'SO'
+                      RefDocNumber = order-SONumber
+                      Description  = |Sale { order-SONumber }| )
+             TO ledger_creates.
+
+      "==== 5) เปลี่ยนสถานะเป็น Completed ====
       APPEND VALUE #( %tky          = order-%tky
-                      OverallStatus = 'F' ) TO updates.
+                      OverallStatus = 'F' ) TO header_updates.
+
     ENDLOOP.
 
-    MODIFY ENTITIES OF zi_its_salesorder IN LOCAL MODE
-      ENTITY SalesOrder UPDATE FIELDS ( OverallStatus ) WITH updates
-      REPORTED DATA(rep).
+    "==== 6) ยิง EML ทั้งสาม ====
 
-    "==== Round 4 จะเพิ่มตรงนี้: EML ตัดสต๊อกที่ Product + สร้าง Ledger entry ====
+    " 6a) ตัดสต๊อกที่ Product BO
+    IF product_updates IS NOT INITIAL.
+      MODIFY ENTITIES OF zi_its_product
+        ENTITY Product
+          UPDATE FIELDS ( StockQty ) WITH product_updates
+        REPORTED DATA(prod_rep)
+        FAILED   DATA(prod_failed).
+    ENDIF.
 
+    " 6b) สร้าง entry ที่ Ledger BO
+    IF ledger_creates IS NOT INITIAL.
+      MODIFY ENTITIES OF zi_its_ledger
+        ENTITY Ledger
+          CREATE FIELDS ( PostingDate EntryType Amount CurrencyCode
+                          RefDocType RefDocNumber Description )
+          WITH ledger_creates
+        REPORTED DATA(led_rep)
+        FAILED   DATA(led_failed).
+    ENDIF.
+
+    " 6c) อัปเดตสถานะ header ของตัวเอง (local mode)
+    IF header_updates IS NOT INITIAL.
+      MODIFY ENTITIES OF zi_its_salesorder IN LOCAL MODE
+        ENTITY SalesOrder
+          UPDATE FIELDS ( OverallStatus ) WITH header_updates
+        REPORTED DATA(hdr_rep).
+    ENDIF.
+
+    "==== 7) คืนค่า instance ให้ UI ====
     READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
       ENTITY SalesOrder ALL FIELDS WITH CORRESPONDING #( keys ) RESULT DATA(final).
     result = VALUE #( FOR o IN final ( %tky = o-%tky %param = o ) ).

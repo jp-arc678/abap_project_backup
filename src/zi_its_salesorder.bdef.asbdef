@@ -37,6 +37,7 @@ authorization master ( global )
   {
     validation validateItems;
     validation SalesOrderItem~validateQuantity;
+    validation SalesOrderItem~validateStock;
   }
   mapping for zits_so
   {
@@ -75,6 +76,7 @@ authorization master ( global )
    determination fetchProductData on modify { field ProductID, Quantity; }
    determination calcTotalAmount   on modify { field Quantity, SalePrice; create; delete;}
    validation validateQuantity on save { create; update; field Quantity; }
+   validation validateStock on save { create; update; field ProductID, Quantity; }
    mapping for zits_soitem
    {
      SOItemUUID         = soitem_uuid;
