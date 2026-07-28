@@ -19,9 +19,16 @@ authorization master ( global )
                      ApprovedBy, ApprovedAt,
                      CreatedBy, CreatedAt, LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
   determination setHeaderDefaults on modify { create; }
+  determination assignSONumber on save { create; }
 
 
   validation validateItems on save { create; update; }
+
+  action ( features : instance ) Submit   result [1] $self;
+  action ( features : instance ) Approve  result [1] $self;
+  action ( features : instance ) Reject   result [1] $self;
+  action ( features : instance ) Cancel   result [1] $self;
+  action ( features : instance ) Complete result [1] $self;
   draft action Activate optimized;
   draft action Discard;
   draft action Edit;

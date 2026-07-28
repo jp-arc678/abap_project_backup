@@ -4,6 +4,7 @@ define root view entity ZI_ITS_SALESORDER
   as select from zits_so
   composition [0..*] of ZI_ITS_SALESORDERITEM as _Item
   association [0..1] to ZI_ITS_EMPLOYEE as _Salesperson on $projection.SalespersonID = _Salesperson.EmployeeID
+  association [1..1] to ZI_ITS_SO_BASE as _Base on $projection.SOUUID = _Base.SOUUID
 {
       @EndUserText.label: 'Sales Order UUID'
   key so_uuid               as SOUUID,
@@ -16,6 +17,7 @@ define root view entity ZI_ITS_SALESORDER
 
       @EndUserText.label: 'Status'
       overall_status        as OverallStatus,
+      
 
       @EndUserText.label: 'Salesperson'
       salesperson_id        as SalespersonID,
@@ -51,5 +53,6 @@ define root view entity ZI_ITS_SALESORDER
       last_changed_at       as LastChangedAt,
 
       _Item,
-      _Salesperson
+      _Salesperson,
+      _Base
 }

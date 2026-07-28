@@ -10,7 +10,11 @@ define root view entity ZC_ITS_SALESORDER
   key SOUUID,
       SONumber,
       OrderType,
+      @ObjectModel.text.element: [ 'OverallStatusText' ]
       OverallStatus,
+
+      _Base.OverallStatusText as OverallStatusText,
+      _Base.StatusCriticality as StatusCriticality,
        @ObjectModel.text.element: [ 'SalespersonName' ]
       @Consumption.valueHelpDefinition: [ { entity: { name: 'ZI_ITS_VH_SALESPERSON', element: 'EmployeeID' } } ]
       SalespersonID,

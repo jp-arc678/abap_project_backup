@@ -20,9 +20,21 @@ annotate view ZC_ITS_SALESORDER with
   @UI.hidden: true
   SOUUID;
 
-  @UI: { lineItem:       [ { position: 10, importance: #HIGH } ],
-         identification: [ { position: 10 } ],
-         selectionField: [ { position: 10 } ] }
+  @UI: {
+    lineItem: [ { position: 10, importance: #HIGH },
+                { type: #FOR_ACTION, dataAction: 'Submit',   label: 'Submit' },
+                { type: #FOR_ACTION, dataAction: 'Approve',  label: 'Approve' },
+                { type: #FOR_ACTION, dataAction: 'Reject',   label: 'Reject' },
+                { type: #FOR_ACTION, dataAction: 'Cancel',   label: 'Cancel' },
+                { type: #FOR_ACTION, dataAction: 'Complete', label: 'Complete' } ],
+    identification: [ { position: 10 },
+                { type: #FOR_ACTION, dataAction: 'Submit',   label: 'Submit' },
+                { type: #FOR_ACTION, dataAction: 'Approve',  label: 'Approve' },
+                { type: #FOR_ACTION, dataAction: 'Reject',   label: 'Reject' },
+                { type: #FOR_ACTION, dataAction: 'Cancel',   label: 'Cancel' },
+                { type: #FOR_ACTION, dataAction: 'Complete', label: 'Complete' } ],
+    selectionField: [ { position: 10 } ]
+  }
   SONumber;
 
   @UI: { lineItem:       [ { position: 20, importance: #MEDIUM } ],
@@ -49,10 +61,17 @@ annotate view ZC_ITS_SALESORDER with
          selectionField: [ { position: 50 } ] }
   OrderType;
 
-  @UI: { lineItem:       [ { position: 60, importance: #HIGH } ],
-         identification: [ { position: 60 } ],
-         selectionField: [ { position: 60 } ] }
+  @UI: {
+    lineItem:       [ { position: 60, importance: #HIGH, criticality: 'StatusCriticality' } ],
+    identification: [ { position: 60 } ],
+    selectionField: [ { position: 60 } ]
+  }
   OverallStatus;
+
+  @UI.hidden: true
+  OverallStatusText;
+  @UI.hidden: true
+  StatusCriticality;
 
   @UI: { identification: [ { position: 70 } ] }
   RejectionReason;

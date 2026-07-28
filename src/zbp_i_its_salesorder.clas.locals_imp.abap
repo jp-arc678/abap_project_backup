@@ -19,6 +19,17 @@ CLASS lhc_SalesOrder DEFINITION INHERITING FROM cl_abap_behavior_handler.
     METHODS validateQuantity FOR VALIDATE ON SAVE
       IMPORTING keys FOR SalesOrderItem~validateQuantity.
 
+    METHODS assignSONumber FOR DETERMINE ON SAVE
+      IMPORTING keys FOR SalesOrder~assignSONumber.
+    METHODS get_instance_features FOR INSTANCE FEATURES
+      IMPORTING keys REQUEST requested_features FOR SalesOrder RESULT result.
+
+    METHODS Submit   FOR MODIFY IMPORTING keys FOR ACTION SalesOrder~Submit   RESULT result.
+    METHODS Approve  FOR MODIFY IMPORTING keys FOR ACTION SalesOrder~Approve  RESULT result.
+    METHODS Reject   FOR MODIFY IMPORTING keys FOR ACTION SalesOrder~Reject   RESULT result.
+    METHODS Cancel   FOR MODIFY IMPORTING keys FOR ACTION SalesOrder~Cancel   RESULT result.
+    METHODS Complete FOR MODIFY IMPORTING keys FOR ACTION SalesOrder~Complete RESULT result.
+
 ENDCLASS.
 
 
@@ -252,6 +263,270 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
       ENDIF.
 
     ENDLOOP.
+
+  ENDMETHOD.
+  METHOD assignSONumber.
+
+    "--- อ่าน order ที่กำลัง save และยังไม่มีเลข ---
+    READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+      ENTITY SalesOrder
+        FIELDS ( SONumber )
+        WITH CORRESPONDING #( keys )
+      RESULT DATA(orders).
+
+    "--- หาเลขล่าสุดจากตารางจริง ---
+    SELECT SINGLE FROM zits_so
+      FIELDS MAX( so_number )
+      INTO @DATA(max_number).
+
+    DATA updates TYPE TABLE FOR UPDATE zi_its_salesorder.
+
+    LOOP AT orders INTO DATA(order).
+
+      "--- ข้ามใบที่มีเลขอยู่แล้ว (กันเลขเปลี่ยนตอน update) ---
+      IF order-SONumber IS NOT INITIAL.
+        CONTINUE.
+      ENDIF.
+
+      max_number += 1.
+
+      APPEND VALUE #( %tky     = order-%tky
+                      SONumber = max_number ) TO updates.
+    ENDLOOP.
+
+    IF updates IS NOT INITIAL.
+      MODIFY ENTITIES OF zi_its_salesorder IN LOCAL MODE
+        ENTITY SalesOrder
+          UPDATE FIELDS ( SONumber )
+          WITH updates
+        REPORTED DATA(rep).
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD get_instance_features.
+
+    READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+      ENTITY SalesOrder
+        FIELDS ( OverallStatus )
+        WITH CORRESPONDING #( keys )
+      RESULT DATA(orders).
+
+    result = VALUE #( FOR order IN orders
+      ( %tky = order-%tky
+
+        %action-Submit   = COND #( WHEN order-OverallStatus = 'D'
+                                   THEN if_abap_behv=>fc-o-enabled
+                                   ELSE if_abap_behv=>fc-o-disabled )
+
+        %action-Approve  = COND #( WHEN order-OverallStatus = 'P'
+                                   THEN if_abap_behv=>fc-o-enabled
+                                   ELSE if_abap_behv=>fc-o-disabled )
+
+        %action-Reject   = COND #( WHEN order-OverallStatus = 'P'
+                                   THEN if_abap_behv=>fc-o-enabled
+                                   ELSE if_abap_behv=>fc-o-disabled )
+
+        %action-Cancel   = COND #( WHEN order-OverallStatus = 'D' OR order-OverallStatus = 'S'
+                                   THEN if_abap_behv=>fc-o-enabled
+                                   ELSE if_abap_behv=>fc-o-disabled )
+
+        %action-Complete = COND #( WHEN order-OverallStatus = 'C'
+                                   THEN if_abap_behv=>fc-o-enabled
+                                   ELSE if_abap_behv=>fc-o-disabled )
+      ) ).
+
+  ENDMETHOD.
+
+  METHOD Submit.
+
+    READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+      ENTITY SalesOrder FIELDS ( OverallStatus OrderType )
+      WITH CORRESPONDING #( keys )
+      RESULT DATA(orders).
+
+    DATA updates TYPE TABLE FOR UPDATE zi_its_salesorder.
+
+    LOOP AT orders INTO DATA(order).
+      IF order-OverallStatus <> 'D'.
+        CONTINUE.
+      ENDIF.
+      APPEND VALUE #( %tky          = order-%tky
+                      OverallStatus = COND #( WHEN order-OrderType = 'S' THEN 'P' ELSE 'C' )
+                    ) TO updates.
+    ENDLOOP.
+
+    MODIFY ENTITIES OF zi_its_salesorder IN LOCAL MODE
+      ENTITY SalesOrder UPDATE FIELDS ( OverallStatus ) WITH updates
+      REPORTED DATA(rep).
+
+    READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+      ENTITY SalesOrder ALL FIELDS WITH CORRESPONDING #( keys ) RESULT DATA(final).
+    result = VALUE #( FOR o IN final ( %tky = o-%tky %param = o ) ).
+
+  ENDMETHOD.
+
+
+*--------------------------------------------------------------------*
+* APPROVE - manager only; Pending -> Confirmed
+*--------------------------------------------------------------------*
+  METHOD Approve.
+
+    DATA(current_user) = cl_abap_context_info=>get_user_technical_name( ).
+    SELECT SINGLE FROM zits_employee FIELDS employee_id
+      WHERE user_name = @current_user AND role_code = 'M' AND is_active = 'X'
+      INTO @DATA(manager_id).
+
+    READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+      ENTITY SalesOrder FIELDS ( OverallStatus )
+      WITH CORRESPONDING #( keys )
+      RESULT DATA(orders).
+
+    DATA updates TYPE TABLE FOR UPDATE zi_its_salesorder.
+    GET TIME STAMP FIELD DATA(now).
+
+    LOOP AT orders INTO DATA(order).
+      IF order-OverallStatus <> 'P'.
+        CONTINUE.
+      ENDIF.
+
+      IF manager_id IS INITIAL.
+        APPEND VALUE #( %tky = order-%tky ) TO failed-salesorder.
+        APPEND VALUE #( %tky = order-%tky
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = 'Only the manager can approve orders' )
+                      ) TO reported-salesorder.
+        CONTINUE.
+      ENDIF.
+
+      APPEND VALUE #( %tky          = order-%tky
+                      OverallStatus = 'C'
+                      ApprovedBy    = manager_id
+                      ApprovedAt    = now ) TO updates.
+    ENDLOOP.
+
+    MODIFY ENTITIES OF zi_its_salesorder IN LOCAL MODE
+      ENTITY SalesOrder UPDATE FIELDS ( OverallStatus ApprovedBy ApprovedAt ) WITH updates
+      REPORTED DATA(rep).
+
+    READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+      ENTITY SalesOrder ALL FIELDS WITH CORRESPONDING #( keys ) RESULT DATA(final).
+    result = VALUE #( FOR o IN final ( %tky = o-%tky %param = o ) ).
+
+  ENDMETHOD.
+
+
+*--------------------------------------------------------------------*
+* REJECT - manager only; Pending -> Rejected
+*--------------------------------------------------------------------*
+  METHOD Reject.
+
+    DATA(current_user) = cl_abap_context_info=>get_user_technical_name( ).
+    SELECT SINGLE FROM zits_employee FIELDS employee_id
+      WHERE user_name = @current_user AND role_code = 'M' AND is_active = 'X'
+      INTO @DATA(manager_id).
+
+    READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+      ENTITY SalesOrder FIELDS ( OverallStatus )
+      WITH CORRESPONDING #( keys )
+      RESULT DATA(orders).
+
+    DATA updates TYPE TABLE FOR UPDATE zi_its_salesorder.
+
+    LOOP AT orders INTO DATA(order).
+      IF order-OverallStatus <> 'P'.
+        CONTINUE.
+      ENDIF.
+
+      IF manager_id IS INITIAL.
+        APPEND VALUE #( %tky = order-%tky ) TO failed-salesorder.
+        APPEND VALUE #( %tky = order-%tky
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = 'Only the manager can reject orders' )
+                      ) TO reported-salesorder.
+        CONTINUE.
+      ENDIF.
+
+      APPEND VALUE #( %tky            = order-%tky
+                      OverallStatus   = 'X'
+                      RejectionReason = 'Rejected by manager' ) TO updates.
+    ENDLOOP.
+
+    MODIFY ENTITIES OF zi_its_salesorder IN LOCAL MODE
+      ENTITY SalesOrder UPDATE FIELDS ( OverallStatus RejectionReason ) WITH updates
+      REPORTED DATA(rep).
+
+    READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+      ENTITY SalesOrder ALL FIELDS WITH CORRESPONDING #( keys ) RESULT DATA(final).
+    result = VALUE #( FOR o IN final ( %tky = o-%tky %param = o ) ).
+
+  ENDMETHOD.
+
+
+*--------------------------------------------------------------------*
+* CANCEL - salesperson; Draft/Submitted -> Rejected
+*--------------------------------------------------------------------*
+  METHOD Cancel.
+
+    READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+      ENTITY SalesOrder FIELDS ( OverallStatus )
+      WITH CORRESPONDING #( keys )
+      RESULT DATA(orders).
+
+    DATA updates TYPE TABLE FOR UPDATE zi_its_salesorder.
+
+    LOOP AT orders INTO DATA(order).
+      IF order-OverallStatus <> 'D' AND order-OverallStatus <> 'S'.
+        CONTINUE.
+      ENDIF.
+      APPEND VALUE #( %tky            = order-%tky
+                      OverallStatus   = 'X'
+                      RejectionReason = 'Cancelled by salesperson' ) TO updates.
+    ENDLOOP.
+
+    MODIFY ENTITIES OF zi_its_salesorder IN LOCAL MODE
+      ENTITY SalesOrder UPDATE FIELDS ( OverallStatus RejectionReason ) WITH updates
+      REPORTED DATA(rep).
+
+    READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+      ENTITY SalesOrder ALL FIELDS WITH CORRESPONDING #( keys ) RESULT DATA(final).
+    result = VALUE #( FOR o IN final ( %tky = o-%tky %param = o ) ).
+
+  ENDMETHOD.
+
+
+*--------------------------------------------------------------------*
+* COMPLETE - salesperson; Confirmed -> Completed
+* (Round 4: จะเพิ่มการตัดสต๊อก + ลง ledger ตรงนี้)
+*--------------------------------------------------------------------*
+  METHOD Complete.
+
+    READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+      ENTITY SalesOrder FIELDS ( OverallStatus )
+      WITH CORRESPONDING #( keys )
+      RESULT DATA(orders).
+
+    DATA updates TYPE TABLE FOR UPDATE zi_its_salesorder.
+
+    LOOP AT orders INTO DATA(order).
+      IF order-OverallStatus <> 'C'.
+        CONTINUE.
+      ENDIF.
+      APPEND VALUE #( %tky          = order-%tky
+                      OverallStatus = 'F' ) TO updates.
+    ENDLOOP.
+
+    MODIFY ENTITIES OF zi_its_salesorder IN LOCAL MODE
+      ENTITY SalesOrder UPDATE FIELDS ( OverallStatus ) WITH updates
+      REPORTED DATA(rep).
+
+    "==== Round 4 จะเพิ่มตรงนี้: EML ตัดสต๊อกที่ Product + สร้าง Ledger entry ====
+
+    READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+      ENTITY SalesOrder ALL FIELDS WITH CORRESPONDING #( keys ) RESULT DATA(final).
+    result = VALUE #( FOR o IN final ( %tky = o-%tky %param = o ) ).
 
   ENDMETHOD.
 
