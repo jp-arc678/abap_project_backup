@@ -1,0 +1,26 @@
+@EndUserText.label: 'Purchase Order Item - Projection'
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@Metadata.allowExtensions: true
+define view entity ZC_ITS_PURCHASEORDERITEM
+  as projection on ZI_ITS_PURCHASEORDERITEM
+{
+  key POItemUUID,
+      ParentUUID,
+      ItemPos,
+      @ObjectModel.text.element: [ 'ProductName' ]
+      @Consumption.valueHelpDefinition: [ { entity: { name: 'ZI_ITS_PRODUCT', element: 'ProductID' } } ]
+      ProductID,
+      _Product.ProductName as ProductName,
+      @Semantics.quantity.unitOfMeasure: 'Unit'
+      Quantity,
+      Unit,
+      @Semantics.amount.currencyCode: 'CurrencyCode'
+      CostPrice,
+      @Semantics.amount.currencyCode: 'CurrencyCode'
+      Amount,
+      @Consumption.valueHelpDefinition: [ { entity: { name: 'I_CurrencyStdVH', element: 'Currency' } } ]
+      CurrencyCode,
+      LocalLastChangedAt,
+      _PurchaseOrder : redirected to parent ZC_ITS_PURCHASEORDER
+       
+}

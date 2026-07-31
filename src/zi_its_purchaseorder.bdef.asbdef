@@ -1,0 +1,77 @@
+managed implementation in class zbp_i_its_purchaseorder unique;
+strict ( 2 );
+with draft;
+
+define behavior for ZI_ITS_PURCHASEORDER alias PurchaseOrder
+persistent table zits_po
+draft table zits_po_d
+lock master total etag LastChangedAt
+etag master LocalLastChangedAt
+authorization master ( global )
+{
+  create;
+  update;
+  delete;
+  association _Item { create; }
+
+  field ( readonly, numbering : managed ) POUUID;
+  field ( readonly ) PONumber, OverallStatus, TotalCost, ApprovedBy, ApprovedAt, ReceivedDate,
+                     CreatedBy, CreatedAt, LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
+  field ( mandatory ) SupplierName, WarehouseStaffID;
+
+  determination setHeaderDefaults on modify { create; }
+  determination assignPONumber on save { create; }
+  validation validateItems on save { create; update; }
+
+  action ( features : instance ) Submit  result [1] $self;
+  action ( features : instance ) Approve result [1] $self;
+  action ( features : instance ) Reject  result [1] $self;
+  action ( features : instance ) Cancel  result [1] $self;
+  action ( features : instance ) Receive result [1] $self;
+
+  draft action Activate optimized;
+  draft action Discard;
+  draft action Edit;
+  draft action Resume;
+  draft determine action Prepare
+  {
+    validation validateItems;
+    validation PurchaseOrderItem~validateQuantity;
+  }
+
+  mapping for zits_po
+  {
+    POUUID = po_uuid;  PONumber = po_number;  SupplierName = supplier_name;
+    OverallStatus = overall_status;  WarehouseStaffID = warehouse_staff_id;
+    OrderDate = order_date;  ReceivedDate = received_date;  TotalCost = total_cost;
+    CurrencyCode = currency_code;  ApprovedBy = approved_by;  ApprovedAt = approved_at;
+    RejectionReason = rejection_reason;  CreatedBy = created_by;  CreatedAt = created_at;
+    LocalLastChangedBy = local_last_changed_by;  LocalLastChangedAt = local_last_changed_at;
+    LastChangedAt = last_changed_at;
+  }
+}
+  define behavior for ZI_ITS_PURCHASEORDERITEM alias PurchaseOrderItem
+  persistent table zits_poitem
+  draft table zits_poitem_d
+  lock dependent by _PurchaseOrder
+  authorization dependent by _PurchaseOrder
+  etag master LocalLastChangedAt
+  {
+    update;
+    delete;
+    association _PurchaseOrder;
+
+    field ( readonly, numbering : managed ) POItemUUID;
+    field ( readonly ) ParentUUID, Amount,LocalLastChangedAt;
+
+    determination processLine on modify { field ProductID, Quantity; }
+    validation validateQuantity on save { create; update; field Quantity; }
+
+    mapping for zits_poitem
+    {
+      POItemUUID = poitem_uuid;  ParentUUID = parent_uuid;  ItemPos = item_pos;
+      ProductID = product_id;  Quantity = quantity;  Unit = unit;
+      CostPrice = cost_price;  Amount = amount;  CurrencyCode = currency_code;
+      LocalLastChangedAt = local_last_changed_at;
+    }
+   }

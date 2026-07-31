@@ -1,0 +1,24 @@
+@Metadata.layer: #CORE
+annotate view ZC_ITS_PURCHASEORDERITEM with
+{
+  @UI.hidden: true
+  POItemUUID;
+  @UI.hidden: true
+  ParentUUID;
+  @UI: { lineItem: [ { position: 10 } ] }
+  ItemPos;
+  @UI: { lineItem: [ { position: 20, importance: #HIGH } ], identification: [ { position: 20 } ], textArrangement: #TEXT_FIRST }
+  ProductID;
+  @UI.hidden: true
+  ProductName;
+  @UI: { lineItem: [ { position: 30, importance: #HIGH } ], identification: [ { position: 30 } ] }
+  Quantity;
+  @UI: { lineItem: [ { position: 35, importance: #LOW } ], identification: [ { position: 35 } ] }
+  Unit;
+  @UI: { lineItem: [ { position: 40, importance: #HIGH } ], identification: [ { position: 40 } ] }
+  CostPrice;
+  @UI: { lineItem: [ { position: 50, importance: #HIGH } ], identification: [ { position: 50 } ] }
+  Amount;
+  @UI: { identification: [ { position: 55 } ] }
+  CurrencyCode;
+}

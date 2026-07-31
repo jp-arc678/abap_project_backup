@@ -1,0 +1,5 @@
+@EndUserText.label: 'Service Definition for IT Shop Purchase Order'
+define service ZUI_ITS_PURCHASEORDER {
+  expose ZC_ITS_PURCHASEORDER     as PurchaseOrder;
+  expose ZC_ITS_PURCHASEORDERITEM as PurchaseOrderItem;
+}

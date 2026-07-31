@@ -1,0 +1,64 @@
+@Metadata.layer: #CORE
+@UI: {
+  headerInfo: { typeName: 'Purchase Order', typeNamePlural: 'Purchase Orders',
+                title: { type: #STANDARD, value: 'PONumber' },
+                description: { type: #STANDARD, value: 'OverallStatus' } }
+}
+annotate view ZC_ITS_PURCHASEORDER with
+{
+  @UI.facet: [
+    { id: 'General', purpose: #STANDARD, type: #IDENTIFICATION_REFERENCE, label: 'General', position: 10 },
+    { id: 'Items',   purpose: #STANDARD, type: #LINEITEM_REFERENCE, label: 'Items', position: 20, targetElement: '_Item' }
+  ]
+
+  @UI.hidden: true
+  POUUID;
+
+  @UI: {
+    lineItem: [ { position: 10, importance: #HIGH },
+                { type: #FOR_ACTION, dataAction: 'Submit',  label: 'Submit' },
+                { type: #FOR_ACTION, dataAction: 'Approve', label: 'Approve' },
+                { type: #FOR_ACTION, dataAction: 'Reject',  label: 'Reject' },
+                { type: #FOR_ACTION, dataAction: 'Cancel',  label: 'Cancel' },
+                { type: #FOR_ACTION, dataAction: 'Receive', label: 'Receive' } ],
+    identification: [ { position: 10 },
+                { type: #FOR_ACTION, dataAction: 'Submit',  label: 'Submit' },
+                { type: #FOR_ACTION, dataAction: 'Approve', label: 'Approve' },
+                { type: #FOR_ACTION, dataAction: 'Reject',  label: 'Reject' },
+                { type: #FOR_ACTION, dataAction: 'Cancel',  label: 'Cancel' },
+                { type: #FOR_ACTION, dataAction: 'Receive', label: 'Receive' } ],
+    selectionField: [ { position: 10 } ]
+  }
+  PONumber;
+
+  @UI: { lineItem: [ { position: 20, importance: #HIGH } ], identification: [ { position: 20 } ] }
+  SupplierName;
+
+  @UI: { lineItem: [ { position: 30, importance: #MEDIUM } ], identification: [ { position: 30 } ] }
+  WarehouseStaffID;
+
+  @UI: { lineItem: [ { position: 40, importance: #HIGH } ], identification: [ { position: 40 } ] }
+  TotalCost;
+
+  @UI: { lineItem: [ { position: 50, importance: #HIGH, criticality: 'StatusCriticality' } ],
+         identification: [ { position: 50 } ], selectionField: [ { position: 50 } ] }
+  OverallStatus;
+
+  @UI: { identification: [ { position: 60 } ] }
+  OrderDate;
+  @UI: { identification: [ { position: 70 } ] }
+  ReceivedDate;
+  @UI: { identification: [ { position: 80 } ] }
+  RejectionReason;
+
+  @UI.hidden: true
+  OverallStatusText;
+  @UI.hidden: true
+  StatusCriticality;
+  @UI.hidden: true
+  WarehouseStaffName;
+  @UI.hidden: true
+  ApprovedBy;
+  @UI.hidden: true
+  ApprovedAt;
+}
