@@ -1,0 +1,34 @@
+{
+  "formatVersion": "2",
+  "header": {
+    "description": "Sales Orders App",
+    "originalLanguage": "en",
+    "abapLanguageVersion": "cloudDevelopment"
+  },
+  "generalInformation": {
+    "appType": "ui5",
+    "catalogId": "SAP_TC_UI5_REPO_UIAD",
+    "targetMappingTitle": "Sales Orders"
+  },
+  "ui5AppDetails": {
+    "appId": "zitssalesorder"
+  },
+  "navigation": {
+    "targetMappingId": "ZITS_SALESORDER_UI5R_TM",
+    "semanticObject": "SalesOrder",
+    "action": "manage",
+    "desktop": true,
+    "tablet": true,
+    "phone": true
+  },
+  "tiles": [
+    {
+      "id": "ZITS_SALESORDER_UI5R_AL",
+      "tileType": "static",
+      "isDefault": true,
+      "standard": {
+        "title": "Sales Orders"
+      }
+    }
+  ]
+}

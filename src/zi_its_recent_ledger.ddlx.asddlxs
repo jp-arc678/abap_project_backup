@@ -1,0 +1,18 @@
+@Metadata.layer: #CORE
+@UI: {
+  headerInfo: { typeName: 'Ledger Entry', typeNamePlural: 'Recent Entries' },
+  presentationVariant: [ { sortOrder: [ { by: 'PostingDate', direction: #DESC } ] } ]
+}
+annotate view ZI_ITS_RECENT_LEDGER with
+{
+  @UI.lineItem: [ { position: 10 } ]
+  PostingDate;
+  @UI.lineItem: [ { position: 20 } ]
+  EntryTypeName;
+  @UI.lineItem: [ { position: 30 } ]
+  RefDocNumber;
+  @UI.lineItem: [ { position: 40, criticality: 'EntryCriticality' } ]
+  Amount;
+  @UI.lineItem: [ { position: 50 } ]
+  Description;
+}

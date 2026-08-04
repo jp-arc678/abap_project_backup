@@ -1,0 +1,13 @@
+@Metadata.layer: #CORE
+@UI: { headerInfo: { typeName: 'Balance', typeNamePlural: 'Shop Balance' } }
+annotate view ZI_ITS_SHOP_BALANCE with
+{
+  @UI.lineItem: [ { position: 10 } ]
+  CurrencyCode;
+  @UI.lineItem: [ { position: 20 } ]
+  TotalIncome;
+  @UI.lineItem: [ { position: 30 } ]
+  TotalExpense;
+  @UI.lineItem: [ { position: 40, criticality: 'BalanceCriticality' } ]
+  Balance;
+}

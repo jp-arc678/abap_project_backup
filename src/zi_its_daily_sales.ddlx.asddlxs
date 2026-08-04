@@ -1,0 +1,12 @@
+@Metadata.layer: #CORE
+@UI: { headerInfo: { typeName: 'Daily Sales', typeNamePlural: 'Daily Sales' } }
+annotate view ZI_ITS_DAILY_SALES with
+{
+  @UI.lineItem: [ { position: 10 } ]
+  @UI.selectionField: [ { position: 10 } ]
+  PostingDate;
+  @UI.lineItem: [ { position: 20 } ]
+  CurrencyCode;
+  @UI.lineItem: [ { position: 30 } ]
+  SalesAmount;
+}

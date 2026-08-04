@@ -1,0 +1,34 @@
+{
+  "formatVersion": "2",
+  "header": {
+    "description": "Manage Products App",
+    "originalLanguage": "en",
+    "abapLanguageVersion": "cloudDevelopment"
+  },
+  "generalInformation": {
+    "appType": "ui5",
+    "catalogId": "SAP_TC_UI5_REPO_UIAD",
+    "targetMappingTitle": "Manage Products"
+  },
+  "ui5AppDetails": {
+    "appId": "zitsproduct"
+  },
+  "navigation": {
+    "targetMappingId": "ZITS_PRODUCT_UI5R_TM",
+    "semanticObject": "Product",
+    "action": "manage",
+    "desktop": true,
+    "tablet": true,
+    "phone": true
+  },
+  "tiles": [
+    {
+      "id": "ZITS_PRODUCT_UI5R_AL",
+      "tileType": "static",
+      "isDefault": true,
+      "standard": {
+        "title": "Manage Products"
+      }
+    }
+  ]
+}

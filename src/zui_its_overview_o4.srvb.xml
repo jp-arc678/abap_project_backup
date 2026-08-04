@@ -4,30 +4,30 @@
   <asx:values>
    <SRVB>
     <METADATA>
-     <NAME>ZUI_ITS_EMPLOYEE_O4</NAME>
+     <NAME>ZUI_ITS_OVERVIEW_O4</NAME>
      <TYPE>SRVB/SVB</TYPE>
-     <DESCRIPTION>service binding for employee table</DESCRIPTION>
+     <DESCRIPTION>service binding for overview</DESCRIPTION>
      <LANGUAGE>EN</LANGUAGE>
      <MASTER_LANGUAGE>EN</MASTER_LANGUAGE>
      <ABAP_LANGU_VERSION>5</ABAP_LANGU_VERSION>
     </METADATA>
     <CONTENT>
      <BIND_TYPE_IMPL>
-      <NAME>ZUI_ITS_EMPLOYEE_O4</NAME>
+      <NAME>ZUI_ITS_OVERVIEW_O4</NAME>
      </BIND_TYPE_IMPL>
      <BIND_TYPE>ODATA</BIND_TYPE>
      <BIND_TYPE_VERSION>V4</BIND_TYPE_VERSION>
      <SERVICES>
       <item>
-       <SERVICE_NAME>ZUI_ITS_EMPLOYEE</SERVICE_NAME>
+       <SERVICE_NAME>ZUI_ITS_OVERVIEW</SERVICE_NAME>
        <SERVICE_CONTENT>
         <item>
          <SERVICE_VERSION>0001</SERVICE_VERSION>
          <RELEASE_STATE>NOT_RELEASED</RELEASE_STATE>
          <SRVD_REF>
-          <URI>/sap/bc/adt/ddic/srvd/sources/zui_its_employee</URI>
+          <URI>/sap/bc/adt/ddic/srvd/sources/zui_its_overview</URI>
           <TYPE>SRVD/SRV</TYPE>
-          <NAME>ZUI_ITS_EMPLOYEE</NAME>
+          <NAME>ZUI_ITS_OVERVIEW</NAME>
          </SRVD_REF>
          <BIND_TYPE_DATA>
           <CONTENT>

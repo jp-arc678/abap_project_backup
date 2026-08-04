@@ -1,0 +1,6 @@
+@EndUserText.label: 'IT Shop Overview Service'
+define service ZUI_ITS_OVERVIEW {
+  expose ZI_ITS_SHOP_BALANCE  as ShopBalance;
+  expose ZI_ITS_RECENT_LEDGER as RecentLedger;
+  expose ZI_ITS_DAILY_SALES   as DailySales;
+}

@@ -22,5 +22,6 @@ define view entity ZC_ITS_PURCHASEORDERITEM
       CurrencyCode,
       LocalLastChangedAt,
       _PurchaseOrder : redirected to parent ZC_ITS_PURCHASEORDER
+      
        
 }
