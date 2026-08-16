@@ -12,7 +12,7 @@ ENDCLASS.
 
 
 
-CLASS zbp_i_its_ustester IMPLEMENTATION.
+CLASS ZBP_I_ITS_USTESTER IMPLEMENTATION.
 
 
   METHOD if_oo_adt_classrun~main.

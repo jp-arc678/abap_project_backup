@@ -10,7 +10,10 @@ CLASS zcl_its_gen_data DEFINITION
 ENDCLASS.
 
 
-CLASS zcl_its_gen_data IMPLEMENTATION.
+
+CLASS ZCL_ITS_GEN_DATA IMPLEMENTATION.
+
+
   METHOD if_oo_adt_classrun~main.
 
     DATA lt_product  TYPE STANDARD TABLE OF zits_product.
@@ -161,4 +164,3 @@ CLASS zcl_its_gen_data IMPLEMENTATION.
 
   ENDMETHOD.
 ENDCLASS.
-

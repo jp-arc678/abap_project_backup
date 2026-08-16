@@ -12,7 +12,7 @@ ENDCLASS.
 
 
 
-CLASS zbp_i_it_fix_active IMPLEMENTATION.
+CLASS ZBP_I_IT_FIX_ACTIVE IMPLEMENTATION.
 
 
   METHOD if_oo_adt_classrun~main.
