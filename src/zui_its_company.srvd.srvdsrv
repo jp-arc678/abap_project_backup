@@ -1,0 +1,4 @@
+@EndUserText.label: 'service def for company'
+define service ZUI_ITS_COMPANY {
+  expose ZC_ITS_COMPANY;
+}

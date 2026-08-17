@@ -1,0 +1,15 @@
+@Metadata.layer: #CORE
+annotate view ZC_ITS_COMPANY with
+{
+   @UI.facet: [ { id: 'General',
+                 purpose: #STANDARD,
+                 type: #IDENTIFICATION_REFERENCE,
+                 label: 'placeholder Details',
+                 position: 10 } ]
+
+  @UI: { lineItem:       [ { position: 10, importance: #HIGH } ],
+         identification: [ { position: 10 } ],
+         selectionField: [ { position: 10 } ] }
+  placeholder;
+    
+}

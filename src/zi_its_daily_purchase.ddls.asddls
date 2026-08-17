@@ -15,3 +15,4 @@ define view entity ZI_ITS_DAILY_PURCHASE
 }
 where entry_type = 'E' and ref_doc_type = 'PO'
 group by posting_date, currency_code
+
