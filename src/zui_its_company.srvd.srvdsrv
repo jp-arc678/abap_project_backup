@@ -1,4 +1,4 @@
-@EndUserText.label: 'service def for company'
+@EndUserText.label: 'Service Definition for IT Shop Company'
 define service ZUI_ITS_COMPANY {
-  expose ZC_ITS_COMPANY;
+  expose ZC_ITS_COMPANY as Company;
 }

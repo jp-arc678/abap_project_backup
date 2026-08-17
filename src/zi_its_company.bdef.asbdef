@@ -1,14 +1,57 @@
 managed implementation in class zbp_i_its_company unique;
 strict ( 2 );
+with draft;
 
-define behavior for ZI_ITS_COMPANY //alias <alias_name>
+define behavior for ZI_ITS_COMPANY alias Company
 persistent table zits_company
-lock master
-authorization master ( instance )
-//etag master <field_name>
+draft table zits_company_d
+lock master total etag LastChangedAt
+etag master LocalLastChangedAt
+authorization master ( global )
 {
-  create ( authorization : global );
+  create;
   update;
-  delete;
-  field ( readonly ) CompanyID;
+  // no delete on purpose — Region/Branch will reference CompanyID; use IsActive = ' ' to deactivate instead
+
+  //--- field characteristics ---
+  field ( mandatory : create, readonly : update ) CompanyID;
+  field ( mandatory ) CompanyName, Currency;
+  field ( readonly ) CreatedBy, CreatedAt, LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
+
+  //--- determinations ---
+  determination setDefaults on modify { create; }
+
+  //--- validations ---
+  validation validateCompanyID   on save { create;         field CompanyID; }
+  validation validateCompanyName on save { create; update; field CompanyName; }
+  validation validateTaxID       on save { create; update; field TaxID; }
+
+  //--- draft actions ---
+  draft action Activate optimized;
+  draft action Discard;
+  draft action Edit;
+  draft action Resume;
+  draft determine action Prepare
+  {
+    validation validateCompanyID;
+    validation validateCompanyName;
+    validation validateTaxID;
+  }
+
+  mapping for zits_company
+  {
+    CompanyID          = company_id;
+    CompanyName        = company_name;
+    LegalName          = legal_name;
+    TaxID              = tax_id;
+    Currency           = currency;
+    Address            = address;
+    Phone              = phone;
+    IsActive           = is_active;
+    CreatedBy          = created_by;
+    CreatedAt          = created_at;
+    LocalLastChangedBy = local_last_changed_by;
+    LocalLastChangedAt = local_last_changed_at;
+    LastChangedAt      = last_changed_at;
+  }
 }

@@ -1,21 +1,30 @@
-
+@EndUserText.label: 'Company - Projection View'
 @AccessControl.authorizationCheck: #NOT_REQUIRED
-@EndUserText.label: 'data def projection for company'
 @Metadata.allowExtensions: true
-define root view entity ZC_ITS_COMPANY provider contract transactional_query
+@Search.searchable: true
+define root view entity ZC_ITS_COMPANY
+  provider contract transactional_query
   as projection on ZI_ITS_COMPANY
 {
-    key CompanyID,
-    CompanyName,
-    LegalName,
-    TaxID,
-    Currency,
-    Address,
-    Phone,
-    IsActive,
-    CreatedBy,
-    CreatedAt,
-    LocalLastChangedBy,
-    LocalLastChangedAt,
-    LastChangedAt
+      @Search.defaultSearchElement: true
+  key CompanyID,
+
+      @Search.defaultSearchElement: true
+      CompanyName,
+      LegalName,
+      TaxID,
+
+      @Consumption.valueHelpDefinition: [ { entity: { name: 'I_CurrencyStdVH', element: 'Currency' },
+                                            useForValidation: true } ]
+      Currency,
+
+      Address,
+      Phone,
+      IsActive,
+
+      CreatedBy,
+      CreatedAt,
+      LocalLastChangedBy,
+      LocalLastChangedAt,
+      LastChangedAt
 }

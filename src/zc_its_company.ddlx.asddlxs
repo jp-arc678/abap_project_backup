@@ -1,15 +1,61 @@
 @Metadata.layer: #CORE
+
+@UI: {
+  headerInfo: {
+    typeName: 'Company',
+    typeNamePlural: 'Companies',
+    title:       { type: #STANDARD, value: 'CompanyName' },
+    description: { type: #STANDARD, value: 'CompanyID' }
+  }
+}
+
 annotate view ZC_ITS_COMPANY with
 {
-   @UI.facet: [ { id: 'General',
+  @UI.facet: [ { id: 'General',
                  purpose: #STANDARD,
                  type: #IDENTIFICATION_REFERENCE,
-                 label: 'placeholder Details',
+                 label: 'Company Details',
                  position: 10 } ]
 
   @UI: { lineItem:       [ { position: 10, importance: #HIGH } ],
          identification: [ { position: 10 } ],
          selectionField: [ { position: 10 } ] }
-  placeholder;
-    
+  CompanyID;
+
+  @UI: { lineItem:       [ { position: 20, importance: #HIGH } ],
+         identification: [ { position: 20 } ],
+         selectionField: [ { position: 20 } ] }
+  CompanyName;
+
+  @UI: { identification: [ { position: 30 } ] }
+  LegalName;
+
+  @UI: { identification: [ { position: 40 } ] }
+  TaxID;
+
+  @UI: { lineItem:       [ { position: 50, importance: #MEDIUM } ],
+         identification: [ { position: 50 } ] }
+  Currency;
+
+  @UI: { identification: [ { position: 60 } ] }
+  Address;
+
+  @UI: { identification: [ { position: 70 } ] }
+  Phone;
+
+  @UI: { lineItem:       [ { position: 80, importance: #HIGH } ],
+         identification: [ { position: 80 } ],
+         selectionField: [ { position: 80 } ] }
+  IsActive;
+
+  @UI.hidden: true
+  CreatedBy;
+  @UI.hidden: true
+  CreatedAt;
+  @UI.hidden: true
+  LocalLastChangedBy;
+  @UI.hidden: true
+  LocalLastChangedAt;
+  @UI.hidden: true
+  LastChangedAt;
 }
