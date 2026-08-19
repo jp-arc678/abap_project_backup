@@ -1,0 +1,4 @@
+@EndUserText.label: 'service def for partners list'
+define service ZUI_ITS_PARTNER {
+  expose ZI_ITS_PARTNER;
+}

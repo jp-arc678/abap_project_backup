@@ -1,0 +1,23 @@
+managed implementation in class zbp_i_its_costctr unique;
+strict ( 2 );
+with draft;
+
+define behavior for ZI_ITS_COSTCTR alias costcenter
+persistent table zits_costctr
+draft table zits_costctr_d
+lock master total etag LastChangedAt
+etag master LocalLastChangedAt
+authorization master ( global )
+//etag master <field_name>
+{
+  create ( authorization : global );
+  update;
+  delete;
+  field ( readonly ) CostCenterId;
+
+  draft action Activate optimized;
+  draft action Discard;
+  draft action Edit;
+  draft action Resume;
+  draft determine action Prepare;
+}

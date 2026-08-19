@@ -1,0 +1,4 @@
+@EndUserText.label: 'service def for gl account'
+define service ZUI_ITS_GLACCT {
+  expose ZI_ITS_GLACCT;
+}

@@ -1,0 +1,4 @@
+@EndUserText.label: 'service def for costcenter'
+define service ZUI_ITS_COSTCTR {
+  expose ZI_ITS_COSTCTR;
+}

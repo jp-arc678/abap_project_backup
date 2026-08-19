@@ -1,0 +1,23 @@
+managed implementation in class zbp_i_its_partner unique;
+strict ( 2 );
+with draft;
+
+define behavior for ZI_ITS_PARTNER alias partner
+persistent table zits_partner
+draft table zits_partner_d
+lock master total etag LastChangedAt
+etag master LocalLastChangedAt
+authorization master ( global )
+//etag master <field_name>
+{
+  create ( authorization : global );
+  update;
+  delete;
+  field ( readonly ) PartnerId;
+
+  draft action Activate optimized;
+  draft action Discard;
+  draft action Edit;
+  draft action Resume;
+  draft determine action Prepare;
+}
