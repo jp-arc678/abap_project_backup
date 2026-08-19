@@ -211,6 +211,19 @@ Cast at the innermost level:
 Standalone BSP apps show a blank page if Work Zone adds `#Semantic-action` to the URL.
 Untick "Add intent and default SAP parameters to URL" on the tile configuration.
 
+### 9. Changing a service definition after publishing leaves a stale descriptor
+If the exposed entity alias changes (`expose X;` → `expose X as Y;`) after the service
+binding was published, the preview app keeps the old entity set name and hangs with
+`Unknown child <ViewName> of ...Container` and `Cannot read properties of undefined
+(reading 'entityType')`.
+**Fix:** Unpublish → Activate → Publish the binding, or delete and recreate the binding.
+
+### 10. Unpublish/Publish a service binding invalidates the session's authorization
+After re-publishing, the browser session still holds the old service-group authorization:
+`No authorization to access service group '<binding>'` / `no start authorization for
+R3TR G4BA <binding>, return code 4`.
+**Fix:** full logout and fresh login (incognito). If it persists, the service needs an
+IAM App (External App) published locally and added to a Business Catalog.
 ---
 
 ## 8. Style preferences

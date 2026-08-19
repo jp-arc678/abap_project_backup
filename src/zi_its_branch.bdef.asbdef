@@ -2,22 +2,58 @@ managed implementation in class zbp_i_its_branch unique;
 strict ( 2 );
 with draft;
 
-define behavior for ZI_ITS_BRANCH alias region
+define behavior for ZI_ITS_BRANCH alias Branch
 persistent table zits_branch
 draft table zits_branch_d
 lock master total etag LastChangedAt
 etag master LocalLastChangedAt
 authorization master ( global )
-//etag master <field_name>
 {
-  create ( authorization : global );
+  create;
   update;
-  delete;
-  field ( readonly ) RegionId;
+  // no delete on purpose — CostCenter will reference BranchID; use IsActive = ' ' to deactivate instead
 
+  //--- field characteristics ---
+  field ( mandatory : create, readonly : update ) BranchID;
+  field ( mandatory ) BranchName, RegionID;
+  field ( readonly ) CreatedBy, CreatedAt, LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
+
+  //--- determinations ---
+  determination setDefaults on modify { create; }
+
+  //--- validations ---
+  validation validateBranchID   on save { create;         field BranchID; }
+  validation validateBranchName on save { create; update; field BranchName; }
+  validation validateRegion     on save { create; update; field RegionID; }
+  validation validateManager    on save { create; update; field BranchManagerID; }
+
+  //--- draft actions ---
   draft action Activate optimized;
   draft action Discard;
   draft action Edit;
   draft action Resume;
-  draft determine action Prepare;
+  draft determine action Prepare
+  {
+    validation validateBranchID;
+    validation validateBranchName;
+    validation validateRegion;
+    validation validateManager;
+  }
+
+  mapping for zits_branch
+  {
+    BranchID           = branch_id;
+    BranchName         = branch_name;
+    RegionID           = region_id;
+    BranchManagerID    = branch_manager_id;
+    Address            = address;
+    Phone              = phone;
+    OpeningDate        = opening_date;
+    IsActive           = is_active;
+    CreatedBy          = created_by;
+    CreatedAt          = created_at;
+    LocalLastChangedBy = local_last_changed_by;
+    LocalLastChangedAt = local_last_changed_at;
+    LastChangedAt      = last_changed_at;
+  }
 }

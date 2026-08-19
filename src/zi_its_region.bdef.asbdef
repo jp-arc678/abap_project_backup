@@ -2,22 +2,55 @@ managed implementation in class zbp_i_its_region unique;
 strict ( 2 );
 with draft;
 
-define behavior for ZI_ITS_REGION alias region
+define behavior for ZI_ITS_REGION alias Region
 persistent table zits_region
 draft table zits_region_d
 lock master total etag LastChangedAt
 etag master LocalLastChangedAt
 authorization master ( global )
-//etag master <field_name>
 {
-  create ( authorization : global );
+  create;
   update;
-  delete;
-  field ( readonly ) RegionId;
+  // no delete on purpose — Branch will reference RegionID; use IsActive = ' ' to deactivate instead
 
+  //--- field characteristics ---
+  field ( mandatory : create, readonly : update ) RegionID;
+  field ( mandatory ) RegionName, CompanyID;
+  field ( readonly ) CreatedBy, CreatedAt, LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
+
+  //--- determinations ---
+  determination setDefaults on modify { create; }
+
+  //--- validations ---
+  validation validateRegionID   on save { create;         field RegionID; }
+  validation validateRegionName on save { create; update; field RegionName; }
+  validation validateCompany    on save { create; update; field CompanyID; }
+  validation validateManager    on save { create; update; field RegionManagerID; }
+
+  //--- draft actions ---
   draft action Activate optimized;
   draft action Discard;
   draft action Edit;
   draft action Resume;
-  draft determine action Prepare;
+  draft determine action Prepare
+  {
+    validation validateRegionID;
+    validation validateRegionName;
+    validation validateCompany;
+    validation validateManager;
+  }
+
+  mapping for zits_region
+  {
+    RegionID           = region_id;
+    RegionName         = region_name;
+    CompanyID          = company_id;
+    RegionManagerID    = region_manager_id;
+    IsActive           = is_active;
+    CreatedBy          = created_by;
+    CreatedAt          = created_at;
+    LocalLastChangedBy = local_last_changed_by;
+    LocalLastChangedAt = local_last_changed_at;
+    LastChangedAt      = last_changed_at;
+  }
 }

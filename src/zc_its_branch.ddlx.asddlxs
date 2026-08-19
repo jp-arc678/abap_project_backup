@@ -1,14 +1,64 @@
 @Metadata.layer: #CORE
-annotate view ZC_ITS_BRANCH
-    with 
-{ 
 
-    @UI.facet: [ { id: 'General',
+@UI: {
+  headerInfo: {
+    typeName: 'Branch',
+    typeNamePlural: 'Branches',
+    title:       { type: #STANDARD, value: 'BranchName' },
+    description: { type: #STANDARD, value: 'BranchID' }
+  }
+}
+
+annotate view ZC_ITS_BRANCH with
+{
+  @UI.facet: [ { id: 'General',
                  purpose: #STANDARD,
                  type: #IDENTIFICATION_REFERENCE,
-                 label: 'place holder Details',
+                 label: 'Branch Details',
                  position: 10 } ]
-    
-    BranchId;
-    
+
+  @UI: { lineItem:       [ { position: 10, importance: #HIGH } ],
+         identification: [ { position: 10 } ],
+         selectionField: [ { position: 10 } ] }
+  BranchID;
+
+  @UI: { lineItem:       [ { position: 20, importance: #HIGH } ],
+         identification: [ { position: 20 } ],
+         selectionField: [ { position: 20 } ] }
+  BranchName;
+
+  @UI: { lineItem:       [ { position: 30, importance: #HIGH } ],
+         identification: [ { position: 30 } ],
+         selectionField: [ { position: 30 } ] }
+  RegionID;
+
+  @UI: { lineItem:       [ { position: 40, importance: #MEDIUM } ],
+         identification: [ { position: 40 } ] }
+  BranchManagerID;
+
+  @UI: { identification: [ { position: 50 } ] }
+  Address;
+
+  @UI: { identification: [ { position: 60 } ] }
+  Phone;
+
+  @UI: { lineItem:       [ { position: 70, importance: #MEDIUM } ],
+         identification: [ { position: 70 } ] }
+  OpeningDate;
+
+  @UI: { lineItem:       [ { position: 80, importance: #HIGH } ],
+         identification: [ { position: 80 } ],
+         selectionField: [ { position: 80 } ] }
+  IsActive;
+
+  @UI.hidden: true
+  CreatedBy;
+  @UI.hidden: true
+  CreatedAt;
+  @UI.hidden: true
+  LocalLastChangedBy;
+  @UI.hidden: true
+  LocalLastChangedAt;
+  @UI.hidden: true
+  LastChangedAt;
 }

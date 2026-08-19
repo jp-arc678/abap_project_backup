@@ -1,14 +1,54 @@
 @Metadata.layer: #CORE
-annotate view ZC_ITS_REGION
-    with 
-{ 
 
-    @UI.facet: [ { id: 'General',
+@UI: {
+  headerInfo: {
+    typeName: 'Region',
+    typeNamePlural: 'Regions',
+    title:       { type: #STANDARD, value: 'RegionName' },
+    description: { type: #STANDARD, value: 'RegionID' }
+  }
+}
+
+annotate view ZC_ITS_REGION with
+{
+  @UI.facet: [ { id: 'General',
                  purpose: #STANDARD,
                  type: #IDENTIFICATION_REFERENCE,
-                 label: 'place holder Details',
+                 label: 'Region Details',
                  position: 10 } ]
-    
-    RegionId;
-    
+
+  @UI: { lineItem:       [ { position: 10, importance: #HIGH } ],
+         identification: [ { position: 10 } ],
+         selectionField: [ { position: 10 } ] }
+  RegionID;
+
+  @UI: { lineItem:       [ { position: 20, importance: #HIGH } ],
+         identification: [ { position: 20 } ],
+         selectionField: [ { position: 20 } ] }
+  RegionName;
+
+  @UI: { lineItem:       [ { position: 30, importance: #HIGH } ],
+         identification: [ { position: 30 } ],
+         selectionField: [ { position: 30 } ] }
+  CompanyID;
+
+  @UI: { lineItem:       [ { position: 40, importance: #MEDIUM } ],
+         identification: [ { position: 40 } ] }
+  RegionManagerID;
+
+  @UI: { lineItem:       [ { position: 50, importance: #HIGH } ],
+         identification: [ { position: 50 } ],
+         selectionField: [ { position: 50 } ] }
+  IsActive;
+
+  @UI.hidden: true
+  CreatedBy;
+  @UI.hidden: true
+  CreatedAt;
+  @UI.hidden: true
+  LocalLastChangedBy;
+  @UI.hidden: true
+  LocalLastChangedAt;
+  @UI.hidden: true
+  LastChangedAt;
 }

@@ -1,4 +1,4 @@
-@EndUserText.label: 'service def for branch'
+@EndUserText.label: 'Service Definition for IT Shop Branch'
 define service ZUI_ITS_BRANCH {
-  expose ZI_ITS_BRANCH;
+  expose ZC_ITS_BRANCH as Branch;
 }

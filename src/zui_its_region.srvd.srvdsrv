@@ -1,4 +1,4 @@
-@EndUserText.label: 'service def for region'
+@EndUserText.label: 'Service Definition for IT Shop Region'
 define service ZUI_ITS_REGION {
-  expose ZI_ITS_REGION;
+  expose ZC_ITS_REGION as Region;
 }
