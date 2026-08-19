@@ -1,4 +1,4 @@
 @EndUserText.label: 'Service Definition for IT Shop Business Partner'
 define service ZUI_ITS_PARTNER {
-  expose ZC_ITS_PARTNER as Partner;
+  expose ZC_ITS_PARTNER as BusinessPartner;
 }
