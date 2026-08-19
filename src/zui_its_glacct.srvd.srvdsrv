@@ -1,4 +1,4 @@
-@EndUserText.label: 'service def for gl account'
+@EndUserText.label: 'Service Definition for IT Shop GL Account'
 define service ZUI_ITS_GLACCT {
-  expose ZI_ITS_GLACCT;
+  expose ZC_ITS_GLACCT as GLAccount;
 }

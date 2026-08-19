@@ -1,4 +1,4 @@
-@EndUserText.label: 'service def for costcenter'
+@EndUserText.label: 'Service Definition for IT Shop Cost Center'
 define service ZUI_ITS_COSTCTR {
-  expose ZI_ITS_COSTCTR;
+  expose ZC_ITS_COSTCTR as CostCenter;
 }

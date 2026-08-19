@@ -2,22 +2,64 @@ managed implementation in class zbp_i_its_partner unique;
 strict ( 2 );
 with draft;
 
-define behavior for ZI_ITS_PARTNER alias partner
+define behavior for ZI_ITS_PARTNER alias Partner
 persistent table zits_partner
 draft table zits_partner_d
 lock master total etag LastChangedAt
 etag master LocalLastChangedAt
 authorization master ( global )
-//etag master <field_name>
 {
-  create ( authorization : global );
+  create;
   update;
-  delete;
-  field ( readonly ) PartnerId;
+  // no delete on purpose — Sales/Purchase Orders will reference PartnerID; use IsActive = ' ' to deactivate instead
 
+  //--- field characteristics ---
+  field ( mandatory : create, readonly : update ) PartnerID;
+  field ( mandatory ) PartnerName, PartnerRole, PartnerType;
+  field ( readonly ) CreatedBy, CreatedAt, LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
+
+  //--- determinations ---
+  determination setDefaults on modify { create; }
+
+  //--- validations ---
+  validation validatePartnerID   on save { create;         field PartnerID; }
+  validation validatePartnerName on save { create; update; field PartnerName; }
+  validation validateRole        on save { create; update; field PartnerRole; }
+  validation validateType        on save { create; update; field PartnerType; }
+  validation validateTaxID       on save { create; update; field TaxID; }
+  validation validateEmail       on save { create; update; field Email; }
+
+  //--- draft actions ---
   draft action Activate optimized;
   draft action Discard;
   draft action Edit;
   draft action Resume;
-  draft determine action Prepare;
+  draft determine action Prepare
+  {
+    validation validatePartnerID;
+    validation validatePartnerName;
+    validation validateRole;
+    validation validateType;
+    validation validateTaxID;
+    validation validateEmail;
+  }
+
+  mapping for zits_partner
+  {
+    PartnerID          = partner_id;
+    PartnerName        = partner_name;
+    PartnerRole        = partner_role;
+    PartnerType        = partner_type;
+    TaxID              = tax_id;
+    Address            = address;
+    Phone              = phone;
+    Email              = email;
+    PaymentTerms       = payment_terms;
+    IsActive           = is_active;
+    CreatedBy          = created_by;
+    CreatedAt          = created_at;
+    LocalLastChangedBy = local_last_changed_by;
+    LocalLastChangedAt = local_last_changed_at;
+    LastChangedAt      = last_changed_at;
+  }
 }

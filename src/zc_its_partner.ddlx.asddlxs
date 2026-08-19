@@ -1,14 +1,70 @@
 @Metadata.layer: #CORE
-annotate view ZC_ITS_PARTNER
-    with 
-{ 
 
-    @UI.facet: [ { id: 'General',
+@UI: {
+  headerInfo: {
+    typeName: 'Business Partner',
+    typeNamePlural: 'Business Partners',
+    title:       { type: #STANDARD, value: 'PartnerName' },
+    description: { type: #STANDARD, value: 'PartnerID' }
+  }
+}
+
+annotate view ZC_ITS_PARTNER with
+{
+  @UI.facet: [ { id: 'General',
                  purpose: #STANDARD,
                  type: #IDENTIFICATION_REFERENCE,
-                 label: 'place holder Details',
+                 label: 'Partner Details',
                  position: 10 } ]
-    
-    placeholderid;
-    
+
+  @UI: { lineItem:       [ { position: 10, importance: #HIGH } ],
+         identification: [ { position: 10 } ],
+         selectionField: [ { position: 10 } ] }
+  PartnerID;
+
+  @UI: { lineItem:       [ { position: 20, importance: #HIGH } ],
+         identification: [ { position: 20 } ],
+         selectionField: [ { position: 20 } ] }
+  PartnerName;
+
+  @UI: { lineItem:       [ { position: 30, importance: #HIGH } ],
+         identification: [ { position: 30 } ],
+         selectionField: [ { position: 30 } ] }
+  PartnerRole;
+
+  @UI: { lineItem:       [ { position: 40, importance: #MEDIUM } ],
+         identification: [ { position: 40 } ],
+         selectionField: [ { position: 40 } ] }
+  PartnerType;
+
+  @UI: { identification: [ { position: 50 } ] }
+  TaxID;
+
+  @UI: { identification: [ { position: 60 } ] }
+  Address;
+
+  @UI: { identification: [ { position: 70 } ] }
+  Phone;
+
+  @UI: { identification: [ { position: 80 } ] }
+  Email;
+
+  @UI: { identification: [ { position: 90 } ] }
+  PaymentTerms;
+
+  @UI: { lineItem:       [ { position: 100, importance: #HIGH } ],
+         identification: [ { position: 100 } ],
+         selectionField: [ { position: 100 } ] }
+  IsActive;
+
+  @UI.hidden: true
+  CreatedBy;
+  @UI.hidden: true
+  CreatedAt;
+  @UI.hidden: true
+  LocalLastChangedBy;
+  @UI.hidden: true
+  LocalLastChangedAt;
+  @UI.hidden: true
+  LastChangedAt;
 }

@@ -1,14 +1,59 @@
 @Metadata.layer: #CORE
-annotate view ZC_ITS_GLACCT
-    with 
-{ 
 
-    @UI.facet: [ { id: 'General',
+@UI: {
+  headerInfo: {
+    typeName: 'GL Account',
+    typeNamePlural: 'GL Accounts',
+    title:       { type: #STANDARD, value: 'AccountName' },
+    description: { type: #STANDARD, value: 'GLAccount' }
+  }
+}
+
+annotate view ZC_ITS_GLACCT with
+{
+  @UI.facet: [ { id: 'General',
                  purpose: #STANDARD,
                  type: #IDENTIFICATION_REFERENCE,
-                 label: 'place holder Details',
+                 label: 'GL Account Details',
                  position: 10 } ]
-    
-    placeholderid;
-    
+
+  @UI: { lineItem:       [ { position: 10, importance: #HIGH } ],
+         identification: [ { position: 10 } ],
+         selectionField: [ { position: 10 } ] }
+  GLAccount;
+
+  @UI: { lineItem:       [ { position: 20, importance: #HIGH } ],
+         identification: [ { position: 20 } ],
+         selectionField: [ { position: 20 } ] }
+  AccountName;
+
+  @UI: { lineItem:       [ { position: 30, importance: #HIGH } ],
+         identification: [ { position: 30 } ],
+         selectionField: [ { position: 30 } ] }
+  AccountType;
+
+  @UI: { lineItem:       [ { position: 40, importance: #MEDIUM } ],
+         identification: [ { position: 40 } ] }
+  AccountGroup;
+
+  @UI: { lineItem:       [ { position: 50, importance: #HIGH } ],
+         identification: [ { position: 50 } ],
+         selectionField: [ { position: 50 } ] }
+  NormalBalance;
+
+  @UI: { lineItem:       [ { position: 60, importance: #HIGH } ],
+         identification: [ { position: 60 } ],
+         selectionField: [ { position: 60 } ] }
+  IsActive;
+
+  @UI.hidden: true
+  CreatedBy;
+  @UI.hidden: true
+  CreatedAt;
+  @UI.hidden: true
+  LocalLastChangedBy;
+  @UI.hidden: true
+  LocalLastChangedAt;
+  @UI.hidden: true
+  LastChangedAt;
 }

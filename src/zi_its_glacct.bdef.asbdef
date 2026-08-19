@@ -2,22 +2,56 @@ managed implementation in class zbp_i_its_glacct unique;
 strict ( 2 );
 with draft;
 
-define behavior for ZI_ITS_GLACCT alias glaccount
+define behavior for ZI_ITS_GLACCT alias GLAccount
 persistent table zits_glacct
 draft table zits_glacct_d
 lock master total etag LastChangedAt
 etag master LocalLastChangedAt
 authorization master ( global )
-//etag master <field_name>
 {
-  create ( authorization : global );
+  create;
   update;
-  delete;
-  field ( readonly )  glaccount;
+  // no delete on purpose — Journal Entries will reference GLAccount; use IsActive = ' ' to deactivate instead
 
+  //--- field characteristics ---
+  field ( mandatory : create, readonly : update ) GLAccount;
+  field ( mandatory ) AccountName, AccountType, NormalBalance;
+  field ( readonly ) CreatedBy, CreatedAt, LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
+
+  //--- determinations ---
+  determination setDefaults on modify { create; }
+
+  //--- validations ---
+  validation validateGLAccount    on save { create;         field GLAccount; }
+  validation validateAccountName  on save { create; update; field AccountName; }
+  validation validateAccountType  on save { create; update; field AccountType; }
+  validation validateNormalBalance on save { create; update; field NormalBalance; }
+
+  //--- draft actions ---
   draft action Activate optimized;
   draft action Discard;
   draft action Edit;
   draft action Resume;
-  draft determine action Prepare;
+  draft determine action Prepare
+  {
+    validation validateGLAccount;
+    validation validateAccountName;
+    validation validateAccountType;
+    validation validateNormalBalance;
+  }
+
+  mapping for zits_glacct
+  {
+    GLAccount          = gl_account;
+    AccountName        = account_name;
+    AccountType        = account_type;
+    AccountGroup       = account_group;
+    NormalBalance      = normal_balance;
+    IsActive           = is_active;
+    CreatedBy          = created_by;
+    CreatedAt          = created_at;
+    LocalLastChangedBy = local_last_changed_by;
+    LocalLastChangedAt = local_last_changed_at;
+    LastChangedAt      = last_changed_at;
+  }
 }
