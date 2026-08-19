@@ -1,0 +1,4 @@
+@EndUserText.label: 'service def for region'
+define service ZUI_ITS_REGION {
+  expose ZI_ITS_REGION;
+}

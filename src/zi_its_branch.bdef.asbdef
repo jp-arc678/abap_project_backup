@@ -1,0 +1,23 @@
+managed implementation in class zbp_i_its_branch unique;
+strict ( 2 );
+with draft;
+
+define behavior for ZI_ITS_BRANCH alias region
+persistent table zits_branch
+draft table zits_branch_d
+lock master total etag LastChangedAt
+etag master LocalLastChangedAt
+authorization master ( global )
+//etag master <field_name>
+{
+  create ( authorization : global );
+  update;
+  delete;
+  field ( readonly ) RegionId;
+
+  draft action Activate optimized;
+  draft action Discard;
+  draft action Edit;
+  draft action Resume;
+  draft determine action Prepare;
+}

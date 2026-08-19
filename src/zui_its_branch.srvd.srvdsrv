@@ -1,0 +1,4 @@
+@EndUserText.label: 'service def for branch'
+define service ZUI_ITS_BRANCH {
+  expose ZI_ITS_BRANCH;
+}
