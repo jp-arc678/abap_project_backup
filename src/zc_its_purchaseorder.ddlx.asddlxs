@@ -31,7 +31,19 @@ annotate view ZC_ITS_PURCHASEORDER with
   }
   PONumber;
 
-  @UI: { lineItem: [ { position: 20, importance: #HIGH } ], identification: [ { position: 20 } ] }
+  @UI: { lineItem: [ { position: 15, importance: #HIGH } ],
+         identification: [ { position: 15 } ],
+         selectionField: [ { position: 15 } ] }
+  BranchID;
+
+  @UI.hidden: true
+  BranchName;
+
+  @UI: { lineItem: [ { position: 20, importance: #HIGH } ],
+         identification: [ { position: 20 } ] }
+  SupplierID;
+
+  @UI.hidden: true
   SupplierName;
 
   @UI: { lineItem: [ { position: 30, importance: #MEDIUM } ], identification: [ { position: 30 } ] }

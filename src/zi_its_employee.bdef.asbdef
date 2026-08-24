@@ -15,7 +15,7 @@ authorization master ( global )
 
   //--- field characteristics ---
   field ( mandatory : create, readonly : update ) EmployeeID;
-  field ( mandatory ) EmployeeName, RoleCode, UserName;
+  field ( mandatory ) EmployeeName, RoleCode, UserName, BranchID;
   field ( readonly ) RoleName, CreatedBy, CreatedAt,
                      LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
 
@@ -26,6 +26,7 @@ authorization master ( global )
   validation validateEmployeeID on save { create;         field EmployeeID; }
   validation validateRole       on save { create; update; field RoleCode, IsActive; }
   validation validateUserName   on save { create; update; field UserName; }
+  validation validateBranch     on save { create; update; field BranchID; }
 
   //--- draft actions ---
   draft action Activate optimized;
@@ -37,12 +38,14 @@ authorization master ( global )
     validation validateEmployeeID;
     validation validateRole;
     validation validateUserName;
+    validation validateBranch;
   }
 
   mapping for zits_employee
   {
     EmployeeID         = employee_id;
     EmployeeName       = employee_name;
+    BranchID           = branch_id;
     RoleCode           = role_code;
     UserName           = user_name;
     IsActive           = is_active;

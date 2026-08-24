@@ -16,6 +16,9 @@ CLASS lhc_Employee DEFINITION INHERITING FROM cl_abap_behavior_handler.
     METHODS validateUserName FOR VALIDATE ON SAVE
       IMPORTING keys FOR Employee~validateUserName.
 
+    METHODS validateBranch FOR VALIDATE ON SAVE
+      IMPORTING keys FOR Employee~validateBranch.
+
 ENDCLASS.
 
 
@@ -191,6 +194,50 @@ CLASS lhc_Employee IMPLEMENTATION.
                         %msg = new_message_with_text(
                                  severity = if_abap_behv_message=>severity-error
                                  text     = 'This system user is already assigned to another employee' )
+                      ) TO reported-employee.
+      ENDIF.
+
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+*--------------------------------------------------------------------*
+* VALIDATION - Branch must be entered and must exist
+*--------------------------------------------------------------------*
+  METHOD validateBranch.
+
+    READ ENTITIES OF zi_its_employee IN LOCAL MODE
+      ENTITY Employee
+        FIELDS ( BranchID )
+        WITH CORRESPONDING #( keys )
+      RESULT DATA(employees).
+
+    LOOP AT employees INTO DATA(employee).
+
+      IF employee-BranchID IS INITIAL.
+        APPEND VALUE #( %tky = employee-%tky ) TO failed-employee.
+        APPEND VALUE #( %tky              = employee-%tky
+                        %element-BranchID = if_abap_behv=>mk-on
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = 'Branch must be entered' )
+                      ) TO reported-employee.
+        CONTINUE.
+      ENDIF.
+
+      SELECT SINGLE FROM zits_branch
+        FIELDS branch_id
+        WHERE branch_id = @employee-BranchID
+        INTO @DATA(existing_branch).
+
+      IF existing_branch IS INITIAL.
+        APPEND VALUE #( %tky = employee-%tky ) TO failed-employee.
+        APPEND VALUE #( %tky              = employee-%tky
+                        %element-BranchID = if_abap_behv=>mk-on
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = 'Branch does not exist' )
                       ) TO reported-employee.
       ENDIF.
 

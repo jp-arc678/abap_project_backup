@@ -224,6 +224,26 @@ After re-publishing, the browser session still holds the old service-group autho
 R3TR G4BA <binding>, return code 4`.
 **Fix:** full logout and fresh login (incognito). If it persists, the service needs an
 IAM App (External App) published locally and added to a Business Catalog.
+### 11. Value-help aliases must not collide with property names
+Exposing a value-help view under the same alias as a field produces a 500 on $metadata:
+`Property 'X' has the same EDM name as entity type 'X'`.
+**Rule:** always suffix value-help aliases with `VH` in the service definition —
+`expose ZI_ITS_VH_PARTNERTYPE as PartnerTypeVH;`
+### 12. OData names entity types as `<EntitySetName>Type` — watch for collisions
+The framework auto-generates an entity type named after the entity set plus `Type`.
+A property with that exact name breaks $metadata with HTTP 500:
+`Property 'X' has the same EDM name as entity type 'X'`
+Example: `expose ZC_ITS_PARTNER as Partner;` generates entity type `PartnerType`,
+which collides with the property `PartnerType`.
+**Rule:** before exposing an entity, check that no property is named
+`<alias>Type`. Rename the alias (cheapest) or the property.
+### 13. `provider contract transactional_query` rejects expressions
+A projection view with a transactional contract cannot contain `CASE` or arithmetic:
+`Field X contains a not supported expression`
+**Fix:** compute it one layer down — in the interface view if the entity has no draft,
+otherwise in a separate plain `define view entity` reached through an association.
+Always `cast(... as abap.int1)` for criticality fields, and declare every computed or
+association-sourced field as `field ( readonly )` in the BDEF (strict(2) requires it).
 ---
 
 ## 8. Style preferences

@@ -2,12 +2,16 @@
 @EndUserText.label: 'Employee - Data Model View'
 define root view entity ZI_ITS_EMPLOYEE
   as select from zits_employee
+  association [0..1] to ZI_ITS_BRANCH as _Branch on $projection.BranchID = _Branch.BranchID
 {
       @EndUserText.label: 'Employee ID'
   key employee_id           as EmployeeID,
 
       @EndUserText.label: 'Employee Name'
       employee_name         as EmployeeName,
+
+      @EndUserText.label: 'Branch ID'
+      branch_id             as BranchID,
 
       @EndUserText.label: 'Role'
       @ObjectModel.text.element: [ 'RoleName' ]
@@ -45,5 +49,7 @@ define root view entity ZI_ITS_EMPLOYEE
 
       @EndUserText.label: 'Last Changed At (Total)'
       @Semantics.systemDateTime.lastChangedAt: true
-      last_changed_at       as LastChangedAt
+      last_changed_at       as LastChangedAt,
+
+      _Branch
 }

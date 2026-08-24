@@ -9,6 +9,12 @@ define root view entity ZC_ITS_SALESORDER
       @Search.defaultSearchElement: true
   key SOUUID,
       SONumber,
+
+      @Consumption.valueHelpDefinition: [ { entity: { name: 'ZC_ITS_BRANCH', element: 'BranchID' } } ]
+      BranchID,
+
+      _Branch.BranchName as BranchName,
+
       OrderType,
       @ObjectModel.text.element: [ 'OverallStatusText' ]
       OverallStatus,

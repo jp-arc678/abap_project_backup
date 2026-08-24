@@ -13,6 +13,9 @@ CLASS lhc_SalesOrder DEFINITION INHERITING FROM cl_abap_behavior_handler.
     METHODS validateItems FOR VALIDATE ON SAVE
       IMPORTING keys FOR SalesOrder~validateItems.
 
+    METHODS validateBranch FOR VALIDATE ON SAVE
+      IMPORTING keys FOR SalesOrder~validateBranch.
+
     METHODS fetchProductData FOR DETERMINE ON MODIFY
       IMPORTING keys FOR SalesOrderItem~fetchProductData.
 
@@ -49,9 +52,16 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 
     READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
       ENTITY SalesOrder
-        FIELDS ( OverallStatus SalesDate CurrencyCode )
+        FIELDS ( OverallStatus SalesDate CurrencyCode BranchID )
         WITH CORRESPONDING #( keys )
       RESULT DATA(orders).
+
+    "--- home branch of the current user, if any, for the auto-fill below ---
+    DATA(current_user) = cl_abap_context_info=>get_user_technical_name( ).
+    SELECT SINGLE FROM zits_employee
+      FIELDS branch_id
+      WHERE upper( user_name ) = @to_upper( current_user )
+      INTO @DATA(user_branch_id).
 
     DATA updates TYPE TABLE FOR UPDATE zi_its_salesorder.
 
@@ -70,19 +80,24 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
         order-CurrencyCode = 'THB'.
         changed = abap_true.
       ENDIF.
+      IF order-BranchID IS INITIAL AND user_branch_id IS NOT INITIAL.
+        order-BranchID = user_branch_id.
+        changed = abap_true.
+      ENDIF.
 
       IF changed = abap_true.
         APPEND VALUE #( %tky          = order-%tky
                         OverallStatus = order-OverallStatus
                         SalesDate     = order-SalesDate
-                        CurrencyCode  = order-CurrencyCode ) TO updates.
+                        CurrencyCode  = order-CurrencyCode
+                        BranchID      = order-BranchID ) TO updates.
       ENDIF.
     ENDLOOP.
 
     IF updates IS NOT INITIAL.
       MODIFY ENTITIES OF zi_its_salesorder IN LOCAL MODE
         ENTITY SalesOrder
-          UPDATE FIELDS ( OverallStatus SalesDate CurrencyCode )
+          UPDATE FIELDS ( OverallStatus SalesDate CurrencyCode BranchID )
           WITH updates
         REPORTED DATA(rep).
     ENDIF.
@@ -268,6 +283,51 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
     ENDLOOP.
 
   ENDMETHOD.
+
+
+*--------------------------------------------------------------------*
+* VALIDATION - Branch must be entered and must exist
+*--------------------------------------------------------------------*
+  METHOD validateBranch.
+
+    READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+      ENTITY SalesOrder
+        FIELDS ( BranchID )
+        WITH CORRESPONDING #( keys )
+      RESULT DATA(orders).
+
+    LOOP AT orders INTO DATA(order).
+
+      IF order-BranchID IS INITIAL.
+        APPEND VALUE #( %tky = order-%tky ) TO failed-salesorder.
+        APPEND VALUE #( %tky              = order-%tky
+                        %element-BranchID = if_abap_behv=>mk-on
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = 'Branch must be entered' )
+                      ) TO reported-salesorder.
+        CONTINUE.
+      ENDIF.
+
+      SELECT SINGLE FROM zits_branch
+        FIELDS branch_id
+        WHERE branch_id = @order-BranchID
+        INTO @DATA(existing_branch).
+
+      IF existing_branch IS INITIAL.
+        APPEND VALUE #( %tky = order-%tky ) TO failed-salesorder.
+        APPEND VALUE #( %tky              = order-%tky
+                        %element-BranchID = if_abap_behv=>mk-on
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = 'Branch does not exist' )
+                      ) TO reported-salesorder.
+      ENDIF.
+
+    ENDLOOP.
+
+  ENDMETHOD.
+
   METHOD assignSONumber.
 
     "--- อ่าน order ที่กำลัง save และยังไม่มีเลข ---

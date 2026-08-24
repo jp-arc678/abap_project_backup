@@ -4,6 +4,7 @@ define root view entity ZI_ITS_SALESORDER
   as select from zits_so
   composition [0..*] of ZI_ITS_SALESORDERITEM as _Item
   association [0..1] to ZI_ITS_EMPLOYEE as _Salesperson on $projection.SalespersonID = _Salesperson.EmployeeID
+  association [0..1] to ZI_ITS_BRANCH as _Branch on $projection.BranchID = _Branch.BranchID
   association [1..1] to ZI_ITS_SO_BASE as _Base on $projection.SOUUID = _Base.SOUUID
 {
       @EndUserText.label: 'Sales Order UUID'
@@ -11,6 +12,9 @@ define root view entity ZI_ITS_SALESORDER
 
       @EndUserText.label: 'Sales Order Number'
       so_number             as SONumber,
+
+      @EndUserText.label: 'Branch ID'
+      branch_id             as BranchID,
 
       @EndUserText.label: 'Order Type'
       order_type            as OrderType,
@@ -54,5 +58,6 @@ define root view entity ZI_ITS_SALESORDER
 
       _Item,
       _Salesperson,
+      _Branch,
       _Base
 }

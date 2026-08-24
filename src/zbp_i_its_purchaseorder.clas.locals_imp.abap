@@ -6,6 +6,8 @@ CLASS lhc_PurchaseOrder DEFINITION INHERITING FROM cl_abap_behavior_handler.
     METHODS setHeaderDefaults FOR DETERMINE ON MODIFY IMPORTING keys FOR PurchaseOrder~setHeaderDefaults.
     METHODS assignPONumber   FOR DETERMINE ON SAVE   IMPORTING keys FOR PurchaseOrder~assignPONumber.
     METHODS validateItems    FOR VALIDATE ON SAVE    IMPORTING keys FOR PurchaseOrder~validateItems.
+    METHODS validateBranch   FOR VALIDATE ON SAVE    IMPORTING keys FOR PurchaseOrder~validateBranch.
+    METHODS validateSupplier FOR VALIDATE ON SAVE    IMPORTING keys FOR PurchaseOrder~validateSupplier.
     METHODS processLine      FOR DETERMINE ON MODIFY IMPORTING keys FOR PurchaseOrderItem~processLine.
     METHODS validateQuantity FOR VALIDATE ON SAVE    IMPORTING keys FOR PurchaseOrderItem~validateQuantity.
     METHODS get_instance_features FOR INSTANCE FEATURES
@@ -198,22 +200,34 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
 
   METHOD setHeaderDefaults.
     READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
-      ENTITY PurchaseOrder FIELDS ( OverallStatus OrderDate CurrencyCode )
+      ENTITY PurchaseOrder FIELDS ( OverallStatus OrderDate CurrencyCode BranchID )
       WITH CORRESPONDING #( keys ) RESULT DATA(orders).
+
+    "--- home branch of the current user, if any, for the auto-fill below ---
+    DATA(current_user) = cl_abap_context_info=>get_user_technical_name( ).
+    SELECT SINGLE FROM zits_employee
+      FIELDS branch_id
+      WHERE upper( user_name ) = @to_upper( current_user )
+      INTO @DATA(user_branch_id).
+
     DATA updates TYPE TABLE FOR UPDATE zi_its_purchaseorder.
     LOOP AT orders INTO DATA(order).
       DATA(changed) = abap_false.
       IF order-OverallStatus IS INITIAL. order-OverallStatus = 'D'. changed = abap_true. ENDIF.
       IF order-OrderDate IS INITIAL. order-OrderDate = cl_abap_context_info=>get_system_date( ). changed = abap_true. ENDIF.
       IF order-CurrencyCode IS INITIAL. order-CurrencyCode = 'THB'. changed = abap_true. ENDIF.
+      IF order-BranchID IS INITIAL AND user_branch_id IS NOT INITIAL.
+        order-BranchID = user_branch_id. changed = abap_true.
+      ENDIF.
       IF changed = abap_true.
         APPEND VALUE #( %tky = order-%tky OverallStatus = order-OverallStatus
-                        OrderDate = order-OrderDate CurrencyCode = order-CurrencyCode ) TO updates.
+                        OrderDate = order-OrderDate CurrencyCode = order-CurrencyCode
+                        BranchID = order-BranchID ) TO updates.
       ENDIF.
     ENDLOOP.
     IF updates IS NOT INITIAL.
       MODIFY ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
-        ENTITY PurchaseOrder UPDATE FIELDS ( OverallStatus OrderDate CurrencyCode ) WITH updates
+        ENTITY PurchaseOrder UPDATE FIELDS ( OverallStatus OrderDate CurrencyCode BranchID ) WITH updates
         REPORTED DATA(rep).
     ENDIF.
   ENDMETHOD.
@@ -240,6 +254,95 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
                         %msg = new_message_with_text(
                                  severity = if_abap_behv_message=>severity-error
                                  text     = 'purchaseorder must have at least one item' )
+                      ) TO reported-purchaseorder.
+      ENDIF.
+
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+*--------------------------------------------------------------------*
+* VALIDATION - Branch must be entered and must exist
+*--------------------------------------------------------------------*
+  METHOD validateBranch.
+
+    READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
+      ENTITY PurchaseOrder
+        FIELDS ( BranchID )
+        WITH CORRESPONDING #( keys )
+      RESULT DATA(orders).
+
+    LOOP AT orders INTO DATA(order).
+
+      IF order-BranchID IS INITIAL.
+        APPEND VALUE #( %tky = order-%tky ) TO failed-purchaseorder.
+        APPEND VALUE #( %tky              = order-%tky
+                        %element-BranchID = if_abap_behv=>mk-on
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = 'Branch must be entered' )
+                      ) TO reported-purchaseorder.
+        CONTINUE.
+      ENDIF.
+
+      SELECT SINGLE FROM zits_branch
+        FIELDS branch_id
+        WHERE branch_id = @order-BranchID
+        INTO @DATA(existing_branch).
+
+      IF existing_branch IS INITIAL.
+        APPEND VALUE #( %tky = order-%tky ) TO failed-purchaseorder.
+        APPEND VALUE #( %tky              = order-%tky
+                        %element-BranchID = if_abap_behv=>mk-on
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = 'Branch does not exist' )
+                      ) TO reported-purchaseorder.
+      ENDIF.
+
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+*--------------------------------------------------------------------*
+* VALIDATION - Supplier must be entered and must exist
+*--------------------------------------------------------------------*
+  METHOD validateSupplier.
+
+    READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
+      ENTITY PurchaseOrder
+        FIELDS ( SupplierID )
+        WITH CORRESPONDING #( keys )
+      RESULT DATA(orders).
+
+    LOOP AT orders INTO DATA(order).
+
+      IF order-SupplierID IS INITIAL.
+        APPEND VALUE #( %tky = order-%tky ) TO failed-purchaseorder.
+        APPEND VALUE #( %tky                = order-%tky
+                        %element-SupplierID = if_abap_behv=>mk-on
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = 'Supplier must be entered' )
+                      ) TO reported-purchaseorder.
+        CONTINUE.
+      ENDIF.
+
+      SELECT SINGLE FROM zits_partner
+        FIELDS partner_id
+        WHERE partner_id = @order-SupplierID
+          AND ( partner_role = 'S' OR partner_role = 'B' )
+        INTO @DATA(existing_supplier).
+
+      IF existing_supplier IS INITIAL.
+        APPEND VALUE #( %tky = order-%tky ) TO failed-purchaseorder.
+        APPEND VALUE #( %tky                = order-%tky
+                        %element-SupplierID = if_abap_behv=>mk-on
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = 'Supplier does not exist or is not a supplier partner' )
                       ) TO reported-purchaseorder.
       ENDIF.
 

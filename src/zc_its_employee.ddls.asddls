@@ -12,6 +12,11 @@ define root view entity ZC_ITS_EMPLOYEE
       @Search.defaultSearchElement: true
       EmployeeName,
 
+      @Consumption.valueHelpDefinition: [ { entity: { name: 'ZC_ITS_BRANCH', element: 'BranchID' } } ]
+      BranchID,
+
+      _Branch.BranchName as BranchName,
+
       RoleCode,
       RoleName,
 

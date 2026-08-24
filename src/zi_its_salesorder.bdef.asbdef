@@ -18,11 +18,14 @@ authorization master ( global )
   field ( readonly ) SONumber, OrderType, OverallStatus, TotalAmount,
                      ApprovedBy, ApprovedAt,
                      CreatedBy, CreatedAt, LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
+  field ( mandatory ) BranchID;
+
   determination setHeaderDefaults on modify { create; }
   determination assignSONumber on save { create; }
 
 
-  validation validateItems on save { create; update; }
+  validation validateItems  on save { create; update; }
+  validation validateBranch on save { create; update; field BranchID; }
 
   action ( features : instance ) Submit   result [1] $self;
   action ( features : instance ) Approve  result [1] $self;
@@ -36,6 +39,7 @@ authorization master ( global )
   draft determine action Prepare
   {
     validation validateItems;
+    validation validateBranch;
     validation SalesOrderItem~validateQuantity;
     validation SalesOrderItem~validateStock;
   }
@@ -43,6 +47,7 @@ authorization master ( global )
   {
     SOUUID             = so_uuid;
     SONumber           = so_number;
+    BranchID           = branch_id;
     OrderType          = order_type;
     OverallStatus      = overall_status;
     SalespersonID      = salesperson_id;

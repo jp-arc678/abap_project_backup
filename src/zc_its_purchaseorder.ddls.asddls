@@ -9,7 +9,18 @@ define root view entity ZC_ITS_PURCHASEORDER
       @Search.defaultSearchElement: true
   key POUUID,
       PONumber,
-      SupplierName,
+
+      @Consumption.valueHelpDefinition: [ { entity: { name: 'ZC_ITS_BRANCH', element: 'BranchID' } } ]
+      BranchID,
+
+      _Branch.BranchName as BranchName,
+
+      @ObjectModel.text.element: [ 'SupplierName' ]
+      @Consumption.valueHelpDefinition: [ { entity: { name: 'ZC_ITS_PARTNER', element: 'PartnerID' } } ]
+      SupplierID,
+
+      _Supplier.PartnerName as SupplierName,
+
       @ObjectModel.text.element: [ 'OverallStatusText' ]
       OverallStatus,
       _Base.OverallStatusText as OverallStatusText,

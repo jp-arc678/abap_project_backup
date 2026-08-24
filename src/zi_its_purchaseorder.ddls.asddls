@@ -4,14 +4,18 @@ define root view entity ZI_ITS_PURCHASEORDER
   as select from zits_po
   composition [0..*] of ZI_ITS_PURCHASEORDERITEM as _Item
   association [0..1] to ZI_ITS_EMPLOYEE as _WarehouseStaff on $projection.WarehouseStaffID = _WarehouseStaff.EmployeeID
+  association [0..1] to ZI_ITS_BRANCH as _Branch on $projection.BranchID = _Branch.BranchID
+  association [0..1] to ZI_ITS_PARTNER as _Supplier on $projection.SupplierID = _Supplier.PartnerID
   association [1..1] to ZI_ITS_PO_BASE as _Base on $projection.POUUID = _Base.POUUID
 {
       @EndUserText.label: 'Purchase Order UUID'
   key po_uuid               as POUUID,
       @EndUserText.label: 'PO Number'
       po_number             as PONumber,
+      @EndUserText.label: 'Branch ID'
+      branch_id             as BranchID,
       @EndUserText.label: 'Supplier'
-      supplier_name         as SupplierName,
+      supplier_id           as SupplierID,
       @EndUserText.label: 'Status'
       overall_status        as OverallStatus,
       @EndUserText.label: 'Warehouse Staff'
@@ -43,5 +47,7 @@ define root view entity ZI_ITS_PURCHASEORDER
       last_changed_at       as LastChangedAt,
       _Item,
       _WarehouseStaff,
+      _Branch,
+      _Supplier,
       _Base
 }

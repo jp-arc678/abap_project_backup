@@ -29,7 +29,15 @@ annotate view ZC_ITS_EMPLOYEE with
 
   @UI: { lineItem:       [ { position: 30, importance: #HIGH } ],
          identification: [ { position: 30 } ],
-         selectionField: [ { position: 30 } ],
+         selectionField: [ { position: 30 } ] }
+  BranchID;
+
+  @UI.hidden: true
+  BranchName;
+
+  @UI: { lineItem:       [ { position: 35, importance: #HIGH } ],
+         identification: [ { position: 35 } ],
+         selectionField: [ { position: 35 } ],
          textArrangement: #TEXT_ONLY }
   RoleCode;
 

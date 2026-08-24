@@ -17,11 +17,13 @@ authorization master ( global )
   field ( readonly, numbering : managed ) POUUID;
   field ( readonly ) PONumber, OverallStatus, TotalCost, ApprovedBy, ApprovedAt, ReceivedDate,
                      CreatedBy, CreatedAt, LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
-  field ( mandatory ) SupplierName, WarehouseStaffID;
+  field ( mandatory ) SupplierID, WarehouseStaffID, BranchID;
 
   determination setHeaderDefaults on modify { create; }
   determination assignPONumber on save { create; }
-  validation validateItems on save { create; update; }
+  validation validateItems    on save { create; update; }
+  validation validateBranch   on save { create; update; field BranchID; }
+  validation validateSupplier on save { create; update; field SupplierID; }
 
   action ( features : instance ) Submit  result [1] $self;
   action ( features : instance ) Approve result [1] $self;
@@ -36,12 +38,14 @@ authorization master ( global )
   draft determine action Prepare
   {
     validation validateItems;
+    validation validateBranch;
+    validation validateSupplier;
     validation PurchaseOrderItem~validateQuantity;
   }
 
   mapping for zits_po
   {
-    POUUID = po_uuid;  PONumber = po_number;  SupplierName = supplier_name;
+    POUUID = po_uuid;  PONumber = po_number;  BranchID = branch_id;  SupplierID = supplier_id;
     OverallStatus = overall_status;  WarehouseStaffID = warehouse_staff_id;
     OrderDate = order_date;  ReceivedDate = received_date;  TotalCost = total_cost;
     CurrencyCode = currency_code;  ApprovedBy = approved_by;  ApprovedAt = approved_at;
