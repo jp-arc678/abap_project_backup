@@ -32,7 +32,7 @@ CLASS lhc_Product IMPLEMENTATION.
 
     READ ENTITIES OF zi_its_product IN LOCAL MODE
       ENTITY Product
-        FIELDS ( CurrencyCode Unit IsActive StockQty ReorderLevel )
+        FIELDS ( CurrencyCode Unit IsActive )
         WITH CORRESPONDING #( keys )
       RESULT DATA(products).
 
@@ -57,23 +57,11 @@ CLASS lhc_Product IMPLEMENTATION.
         needs_update = abap_true.
       ENDIF.
 
-      IF product-StockQty IS INITIAL.
-        product-StockQty = 0.
-        needs_update = abap_true.
-      ENDIF.
-
-      IF product-ReorderLevel IS INITIAL.
-        product-ReorderLevel = 0.
-        needs_update = abap_true.
-      ENDIF.
-
       IF needs_update = abap_true.
         APPEND VALUE #( %tky         = product-%tky
                         CurrencyCode = product-CurrencyCode
                         Unit         = product-Unit
-                        IsActive     = product-IsActive
-                        StockQty     = product-StockQty
-                        ReorderLevel = product-ReorderLevel ) TO updates.
+                        IsActive     = product-IsActive ) TO updates.
       ENDIF.
 
     ENDLOOP.
@@ -81,7 +69,7 @@ CLASS lhc_Product IMPLEMENTATION.
     IF updates IS NOT INITIAL.
       MODIFY ENTITIES OF zi_its_product IN LOCAL MODE
         ENTITY Product
-          UPDATE FIELDS ( CurrencyCode Unit IsActive StockQty ReorderLevel )
+          UPDATE FIELDS ( CurrencyCode Unit IsActive )
           WITH updates
         REPORTED DATA(modify_reported).
     ENDIF.
@@ -168,7 +156,7 @@ CLASS lhc_Product IMPLEMENTATION.
 
     READ ENTITIES OF zi_its_product IN LOCAL MODE
       ENTITY Product
-        FIELDS ( SalePrice CostPrice ReorderLevel )
+        FIELDS ( SalePrice CostPrice )
         WITH CORRESPONDING #( keys )
       RESULT DATA(products).
 
@@ -201,16 +189,6 @@ CLASS lhc_Product IMPLEMENTATION.
                         %msg = new_message_with_text(
                                  severity = if_abap_behv_message=>severity-error
                                  text     = 'Sale price must not be lower than cost price' )
-                      ) TO reported-product.
-      ENDIF.
-
-      IF product-ReorderLevel < 0.
-        APPEND VALUE #( %tky = product-%tky ) TO failed-product.
-        APPEND VALUE #( %tky                  = product-%tky
-                        %element-ReorderLevel = if_abap_behv=>mk-on
-                        %msg = new_message_with_text(
-                                 severity = if_abap_behv_message=>severity-error
-                                 text     = 'Reorder level must not be negative' )
                       ) TO reported-product.
       ENDIF.
 

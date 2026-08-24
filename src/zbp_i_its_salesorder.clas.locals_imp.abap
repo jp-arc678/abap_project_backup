@@ -16,6 +16,9 @@ CLASS lhc_SalesOrder DEFINITION INHERITING FROM cl_abap_behavior_handler.
     METHODS validateBranch FOR VALIDATE ON SAVE
       IMPORTING keys FOR SalesOrder~validateBranch.
 
+    METHODS validateSalesperson FOR VALIDATE ON SAVE
+      IMPORTING keys FOR SalesOrder~validateSalesperson.
+
     METHODS fetchProductData FOR DETERMINE ON MODIFY
       IMPORTING keys FOR SalesOrderItem~fetchProductData.
 
@@ -52,16 +55,16 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 
     READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
       ENTITY SalesOrder
-        FIELDS ( OverallStatus SalesDate CurrencyCode BranchID )
+        FIELDS ( OverallStatus SalesDate CurrencyCode BranchID SalespersonID )
         WITH CORRESPONDING #( keys )
       RESULT DATA(orders).
 
-    "--- home branch of the current user, if any, for the auto-fill below ---
+    "--- employee record of the current user, if any, for the auto-fill below ---
     DATA(current_user) = to_upper( cl_abap_context_info=>get_user_technical_name( ) ).
     SELECT SINGLE FROM zits_employee
-      FIELDS branch_id
+      FIELDS employee_id, branch_id
       WHERE upper( user_name ) = @current_user AND is_active = 'X'
-      INTO @DATA(user_branch_id).
+      INTO @DATA(current_employee).
 
     DATA updates TYPE TABLE FOR UPDATE zi_its_salesorder.
 
@@ -80,8 +83,12 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
         order-CurrencyCode = 'THB'.
         changed = abap_true.
       ENDIF.
-      IF order-BranchID IS INITIAL AND user_branch_id IS NOT INITIAL.
-        order-BranchID = user_branch_id.
+      IF order-BranchID IS INITIAL AND current_employee-branch_id IS NOT INITIAL.
+        order-BranchID = current_employee-branch_id.
+        changed = abap_true.
+      ENDIF.
+      IF order-SalespersonID IS INITIAL AND current_employee-employee_id IS NOT INITIAL.
+        order-SalespersonID = current_employee-employee_id.
         changed = abap_true.
       ENDIF.
 
@@ -90,14 +97,15 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
                         OverallStatus = order-OverallStatus
                         SalesDate     = order-SalesDate
                         CurrencyCode  = order-CurrencyCode
-                        BranchID      = order-BranchID ) TO updates.
+                        BranchID      = order-BranchID
+                        SalespersonID = order-SalespersonID ) TO updates.
       ENDIF.
     ENDLOOP.
 
     IF updates IS NOT INITIAL.
       MODIFY ENTITIES OF zi_its_salesorder IN LOCAL MODE
         ENTITY SalesOrder
-          UPDATE FIELDS ( OverallStatus SalesDate CurrencyCode BranchID )
+          UPDATE FIELDS ( OverallStatus SalesDate CurrencyCode BranchID SalespersonID )
           WITH updates
         REPORTED DATA(rep).
     ENDIF.
@@ -328,6 +336,34 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 
   ENDMETHOD.
 
+
+*--------------------------------------------------------------------*
+* VALIDATION - Salesperson is derived from the current user; if it's
+* still blank, the current user has no active Employee record
+*--------------------------------------------------------------------*
+  METHOD validateSalesperson.
+
+    READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+      ENTITY SalesOrder
+        FIELDS ( SalespersonID )
+        WITH CORRESPONDING #( keys )
+      RESULT DATA(orders).
+
+    LOOP AT orders INTO DATA(order).
+
+      IF order-SalespersonID IS INITIAL.
+        APPEND VALUE #( %tky = order-%tky ) TO failed-salesorder.
+        APPEND VALUE #( %tky = order-%tky
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = 'Your user is not linked to an active employee record' )
+                      ) TO reported-salesorder.
+      ENDIF.
+
+    ENDLOOP.
+
+  ENDMETHOD.
+
   METHOD assignSONumber.
 
     "--- อ่าน order ที่กำลัง save และยังไม่มีเลข ---
@@ -415,10 +451,23 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
-      "--- อ่านสต๊อกปัจจุบันของสินค้า ---
-      SELECT SINGLE FROM zits_product
-        FIELDS stock_qty
-        WHERE product_id = @item-ProductID
+      "--- หา BranchID ของใบสั่งขายที่เป็นแม่ของ item นี้ ---
+      READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+        ENTITY SalesOrderItem BY \_SalesOrder
+          FIELDS ( BranchID )
+          WITH VALUE #( ( %tky = item-%tky ) )
+        RESULT DATA(headers).
+
+      READ TABLE headers INTO DATA(header) INDEX 1.
+      IF sy-subrc <> 0 OR header-BranchID IS INITIAL.
+        CONTINUE.
+      ENDIF.
+
+      "--- อ่านสต๊อกปัจจุบันของสินค้าที่สาขานี้ ---
+      SELECT SINGLE FROM zits_stock
+        FIELDS qty_on_hand
+        WHERE branch_id  = @header-BranchID
+          AND product_id = @item-ProductID
         INTO @DATA(available_stock).
 
       IF item-Quantity > available_stock.
@@ -427,7 +476,7 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
                         %element-Quantity = if_abap_behv=>mk-on
                         %msg = new_message_with_text(
                                  severity = if_abap_behv_message=>severity-error
-                                 text     = |Not enough stock: only { available_stock } available| )
+                                 text     = |Not enough stock at this branch: only { available_stock } available| )
                       ) TO reported-salesorderitem.
       ENDIF.
 
@@ -603,12 +652,12 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
     "==== 1) อ่าน header ที่จะ complete (เฉพาะสถานะ Confirmed) ====
     READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
       ENTITY SalesOrder
-        FIELDS ( OverallStatus SONumber CurrencyCode TotalAmount )
+        FIELDS ( OverallStatus SONumber CurrencyCode TotalAmount BranchID )
         WITH CORRESPONDING #( keys )
       RESULT DATA(orders).
 
     DATA header_updates TYPE TABLE FOR UPDATE zi_its_salesorder.
-    DATA product_updates TYPE TABLE FOR UPDATE zi_its_product.
+    DATA stock_updates  TYPE TABLE FOR UPDATE zi_its_stock.
     DATA ledger_creates TYPE TABLE FOR CREATE zi_its_ledger.
 
     GET TIME STAMP FIELD DATA(now).
@@ -627,20 +676,22 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
           WITH VALUE #( ( %tky = order-%tky ) )
         RESULT DATA(items).
 
-      "==== 3) เตรียมตัดสต๊อกแต่ละสินค้า ====
+      "==== 3) เตรียมตัดสต๊อกแต่ละสินค้า ที่สาขาของใบสั่งขายนี้ ====
       LOOP AT items INTO DATA(item).
         IF item-ProductID IS INITIAL.
           CONTINUE.
         ENDIF.
 
-        SELECT SINGLE FROM zits_product
-          FIELDS stock_qty
-          WHERE product_id = @item-ProductID
+        SELECT SINGLE FROM zits_stock
+          FIELDS qty_on_hand
+          WHERE branch_id  = @order-BranchID
+            AND product_id = @item-ProductID
           INTO @DATA(current_stock).
 
-        APPEND VALUE #( %key-ProductID = item-ProductID
-                        StockQty       = current_stock - item-Quantity )
-               TO product_updates.
+        APPEND VALUE #( %key-BranchID  = order-BranchID
+                        %key-ProductID = item-ProductID
+                        QtyOnHand      = current_stock - item-Quantity )
+               TO stock_updates.
       ENDLOOP.
 
       "==== 4) เตรียม ledger entry (income) ของใบนี้ ====
@@ -662,13 +713,13 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 
     "==== 6) ยิง EML ทั้งสาม ====
 
-    " 6a) ตัดสต๊อกที่ Product BO
-    IF product_updates IS NOT INITIAL.
-      MODIFY ENTITIES OF zi_its_product
-        ENTITY Product
-          UPDATE FIELDS ( StockQty ) WITH product_updates
-        REPORTED DATA(prod_rep)
-        FAILED   DATA(prod_failed).
+    " 6a) ตัดสต๊อกที่ Stock BO (ต่อสาขา)
+    IF stock_updates IS NOT INITIAL.
+      MODIFY ENTITIES OF zi_its_stock
+        ENTITY Stock
+          UPDATE FIELDS ( QtyOnHand ) WITH stock_updates
+        REPORTED DATA(stock_rep)
+        FAILED   DATA(stock_failed).
     ENDIF.
 
     " 6b) สร้าง entry ที่ Ledger BO

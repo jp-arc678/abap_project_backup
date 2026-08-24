@@ -8,6 +8,7 @@ CLASS lhc_PurchaseOrder DEFINITION INHERITING FROM cl_abap_behavior_handler.
     METHODS validateItems    FOR VALIDATE ON SAVE    IMPORTING keys FOR PurchaseOrder~validateItems.
     METHODS validateBranch   FOR VALIDATE ON SAVE    IMPORTING keys FOR PurchaseOrder~validateBranch.
     METHODS validateSupplier FOR VALIDATE ON SAVE    IMPORTING keys FOR PurchaseOrder~validateSupplier.
+    METHODS validateWarehouseStaff FOR VALIDATE ON SAVE IMPORTING keys FOR PurchaseOrder~validateWarehouseStaff.
     METHODS processLine      FOR DETERMINE ON MODIFY IMPORTING keys FOR PurchaseOrderItem~processLine.
     METHODS validateQuantity FOR VALIDATE ON SAVE    IMPORTING keys FOR PurchaseOrderItem~validateQuantity.
     METHODS get_instance_features FOR INSTANCE FEATURES
@@ -138,11 +139,12 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
 
   METHOD Receive.
     READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
-      ENTITY PurchaseOrder FIELDS ( OverallStatus PONumber CurrencyCode TotalCost )
+      ENTITY PurchaseOrder FIELDS ( OverallStatus PONumber CurrencyCode TotalCost BranchID )
       WITH CORRESPONDING #( keys ) RESULT DATA(orders).
-    DATA header_updates  TYPE TABLE FOR UPDATE zi_its_purchaseorder.
-    DATA product_updates TYPE TABLE FOR UPDATE zi_its_product.
-    DATA ledger_creates  TYPE TABLE FOR CREATE zi_its_ledger.
+    DATA header_updates TYPE TABLE FOR UPDATE zi_its_purchaseorder.
+    DATA stock_updates  TYPE TABLE FOR UPDATE zi_its_stock.
+    DATA stock_creates  TYPE TABLE FOR CREATE zi_its_stock.
+    DATA ledger_creates TYPE TABLE FOR CREATE zi_its_ledger.
     GET TIME STAMP FIELD DATA(now).
     DATA(today) = cl_abap_context_info=>get_system_date( ).
     LOOP AT orders INTO DATA(order).
@@ -152,10 +154,23 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
         WITH VALUE #( ( %tky = order-%tky ) ) RESULT DATA(items).
       LOOP AT items INTO DATA(item).
         IF item-ProductID IS INITIAL. CONTINUE. ENDIF.
-        SELECT SINGLE FROM zits_product FIELDS stock_qty
-          WHERE product_id = @item-ProductID INTO @DATA(current_stock).
-        APPEND VALUE #( %key-ProductID = item-ProductID
-                        StockQty = current_stock + item-Quantity ) TO product_updates.  "เพิ่ม!
+
+        "--- goods receipt: update stock if a row exists for this branch+product, else create it ---
+        SELECT SINGLE FROM zits_stock FIELDS qty_on_hand
+          WHERE branch_id  = @order-BranchID
+            AND product_id = @item-ProductID
+          INTO @DATA(current_stock).
+
+        IF sy-subrc = 0.
+          APPEND VALUE #( %key-BranchID  = order-BranchID
+                          %key-ProductID = item-ProductID
+                          QtyOnHand      = current_stock + item-Quantity ) TO stock_updates.
+        ELSE.
+          APPEND VALUE #( %cid      = |STK_{ order-PONumber }_{ item-ProductID }|
+                          BranchID  = order-BranchID
+                          ProductID = item-ProductID
+                          QtyOnHand = item-Quantity ) TO stock_creates.
+        ENDIF.
       ENDLOOP.
       APPEND VALUE #( %cid = |LED_{ order-PONumber }|
                       PostingDate = today  EntryType = 'E'  "Expense!
@@ -164,9 +179,13 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
                       Description = |Restock { order-PONumber }| ) TO ledger_creates.
       APPEND VALUE #( %tky = order-%tky OverallStatus = 'R' ReceivedDate = today ) TO header_updates.
     ENDLOOP.
-    IF product_updates IS NOT INITIAL.
-      MODIFY ENTITIES OF zi_its_product ENTITY Product
-        UPDATE FIELDS ( StockQty ) WITH product_updates REPORTED DATA(pr) FAILED DATA(pf).
+    IF stock_updates IS NOT INITIAL.
+      MODIFY ENTITIES OF zi_its_stock ENTITY Stock
+        UPDATE FIELDS ( QtyOnHand ) WITH stock_updates REPORTED DATA(stock_upd_rep) FAILED DATA(stock_upd_failed).
+    ENDIF.
+    IF stock_creates IS NOT INITIAL.
+      MODIFY ENTITIES OF zi_its_stock ENTITY Stock
+        CREATE FIELDS ( BranchID ProductID QtyOnHand ) WITH stock_creates REPORTED DATA(stock_crt_rep) FAILED DATA(stock_crt_failed).
     ENDIF.
     IF ledger_creates IS NOT INITIAL.
       MODIFY ENTITIES OF zi_its_ledger ENTITY Ledger
@@ -200,15 +219,15 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
 
   METHOD setHeaderDefaults.
     READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
-      ENTITY PurchaseOrder FIELDS ( OverallStatus OrderDate CurrencyCode BranchID )
+      ENTITY PurchaseOrder FIELDS ( OverallStatus OrderDate CurrencyCode BranchID WarehouseStaffID )
       WITH CORRESPONDING #( keys ) RESULT DATA(orders).
 
-    "--- home branch of the current user, if any, for the auto-fill below ---
+    "--- employee record of the current user, if any, for the auto-fill below ---
     DATA(current_user) = to_upper( cl_abap_context_info=>get_user_technical_name( ) ).
     SELECT SINGLE FROM zits_employee
-      FIELDS branch_id
+      FIELDS employee_id, branch_id
       WHERE upper( user_name ) = @current_user AND is_active = 'X'
-      INTO @DATA(user_branch_id).
+      INTO @DATA(current_employee).
 
     DATA updates TYPE TABLE FOR UPDATE zi_its_purchaseorder.
     LOOP AT orders INTO DATA(order).
@@ -216,18 +235,21 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
       IF order-OverallStatus IS INITIAL. order-OverallStatus = 'D'. changed = abap_true. ENDIF.
       IF order-OrderDate IS INITIAL. order-OrderDate = cl_abap_context_info=>get_system_date( ). changed = abap_true. ENDIF.
       IF order-CurrencyCode IS INITIAL. order-CurrencyCode = 'THB'. changed = abap_true. ENDIF.
-      IF order-BranchID IS INITIAL AND user_branch_id IS NOT INITIAL.
-        order-BranchID = user_branch_id. changed = abap_true.
+      IF order-BranchID IS INITIAL AND current_employee-branch_id IS NOT INITIAL.
+        order-BranchID = current_employee-branch_id. changed = abap_true.
+      ENDIF.
+      IF order-WarehouseStaffID IS INITIAL AND current_employee-employee_id IS NOT INITIAL.
+        order-WarehouseStaffID = current_employee-employee_id. changed = abap_true.
       ENDIF.
       IF changed = abap_true.
         APPEND VALUE #( %tky = order-%tky OverallStatus = order-OverallStatus
                         OrderDate = order-OrderDate CurrencyCode = order-CurrencyCode
-                        BranchID = order-BranchID ) TO updates.
+                        BranchID = order-BranchID WarehouseStaffID = order-WarehouseStaffID ) TO updates.
       ENDIF.
     ENDLOOP.
     IF updates IS NOT INITIAL.
       MODIFY ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
-        ENTITY PurchaseOrder UPDATE FIELDS ( OverallStatus OrderDate CurrencyCode BranchID ) WITH updates
+        ENTITY PurchaseOrder UPDATE FIELDS ( OverallStatus OrderDate CurrencyCode BranchID WarehouseStaffID ) WITH updates
         REPORTED DATA(rep).
     ENDIF.
   ENDMETHOD.
@@ -343,6 +365,34 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
                         %msg = new_message_with_text(
                                  severity = if_abap_behv_message=>severity-error
                                  text     = 'Supplier does not exist or is not a supplier partner' )
+                      ) TO reported-purchaseorder.
+      ENDIF.
+
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+*--------------------------------------------------------------------*
+* VALIDATION - Warehouse staff is derived from the current user; if
+* it's still blank, the current user has no active Employee record
+*--------------------------------------------------------------------*
+  METHOD validateWarehouseStaff.
+
+    READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
+      ENTITY PurchaseOrder
+        FIELDS ( WarehouseStaffID )
+        WITH CORRESPONDING #( keys )
+      RESULT DATA(orders).
+
+    LOOP AT orders INTO DATA(order).
+
+      IF order-WarehouseStaffID IS INITIAL.
+        APPEND VALUE #( %tky = order-%tky ) TO failed-purchaseorder.
+        APPEND VALUE #( %tky = order-%tky
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = 'Your user is not linked to an active employee record' )
                       ) TO reported-purchaseorder.
       ENDIF.
 

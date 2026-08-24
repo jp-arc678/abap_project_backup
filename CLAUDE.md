@@ -244,6 +244,14 @@ A projection view with a transactional contract cannot contain `CASE` or arithme
 otherwise in a separate plain `define view entity` reached through an association.
 Always `cast(... as abap.int1)` for criticality fields, and declare every computed or
 association-sourced field as `field ( readonly )` in the BDEF (strict(2) requires it).
+
+### 14. `to_upper()` cannot wrap an ABAP host variable inside Open SQL
+`WHERE upper( col ) = @to_upper( abap_var )` is a syntax error:
+`The character "(" is not valid here`.
+The right-hand side must be a plain host variable.
+**Fix:** uppercase in ABAP first —
+`DATA(u) = to_upper( cl_abap_context_info=>get_user_technical_name( ) ).`
+then `WHERE upper( user_name ) = @u`.
 ---
 
 ## 8. Style preferences

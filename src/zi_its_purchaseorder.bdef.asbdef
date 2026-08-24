@@ -16,14 +16,16 @@ authorization master ( global )
 
   field ( readonly, numbering : managed ) POUUID;
   field ( readonly ) PONumber, OverallStatus, TotalCost, ApprovedBy, ApprovedAt, ReceivedDate,
+                     WarehouseStaffID,
                      CreatedBy, CreatedAt, LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
-  field ( mandatory ) SupplierID, WarehouseStaffID, BranchID;
+  field ( mandatory ) SupplierID, BranchID;
 
   determination setHeaderDefaults on modify { create; }
   determination assignPONumber on save { create; }
-  validation validateItems    on save { create; update; }
-  validation validateBranch   on save { create; update; field BranchID; }
-  validation validateSupplier on save { create; update; field SupplierID; }
+  validation validateItems          on save { create; update; }
+  validation validateBranch         on save { create; update; field BranchID; }
+  validation validateSupplier       on save { create; update; field SupplierID; }
+  validation validateWarehouseStaff on save { create;         field WarehouseStaffID; }
 
   action ( features : instance ) Submit  result [1] $self;
   action ( features : instance ) Approve result [1] $self;
@@ -40,6 +42,7 @@ authorization master ( global )
     validation validateItems;
     validation validateBranch;
     validation validateSupplier;
+    validation validateWarehouseStaff;
     validation PurchaseOrderItem~validateQuantity;
   }
 

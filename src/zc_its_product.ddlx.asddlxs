@@ -46,13 +46,6 @@ annotate view ZC_ITS_PRODUCT with
   @UI: { identification: [ { position: 65 } ] }
   CurrencyCode;
 
-  @UI: { lineItem:       [ { position: 70, importance: #HIGH } ],
-         identification: [ { position: 70 } ] }
-  StockQty;
-
-  @UI: { identification: [ { position: 80 } ] }
-  ReorderLevel;
-
   @UI: { identification: [ { position: 85 } ] }
   Unit;
 

@@ -24,10 +24,6 @@ define root view entity ZC_ITS_PRODUCT
                                             useForValidation: true } ]
       CurrencyCode,
 
-      @Semantics.quantity.unitOfMeasure: 'Unit'
-      StockQty,
-      @Semantics.quantity.unitOfMeasure: 'Unit'
-      ReorderLevel,
       Unit,
 
       IsActive,

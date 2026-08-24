@@ -8,9 +8,6 @@ define behavior for ZC_ITS_PRODUCT alias Product
   use update;
   use delete;
 
-  // StockQty แก้จาก UI ไม่ได้ แต่ยังแก้ผ่าน EML จาก BO อื่นได้
-  field ( readonly ) StockQty;
-
   use action Edit;
   use action Activate;
   use action Discard;

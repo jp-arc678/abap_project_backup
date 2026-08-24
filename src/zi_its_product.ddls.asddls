@@ -30,14 +30,6 @@ define root view entity ZI_ITS_PRODUCT
       @EndUserText.label: 'Currency'
       currency_code         as CurrencyCode,
 
-      @EndUserText.label: 'Stock Quantity'
-      @Semantics.quantity.unitOfMeasure: 'Unit'
-      stock_qty             as StockQty,
-
-      @EndUserText.label: 'Reorder Level'
-      @Semantics.quantity.unitOfMeasure: 'Unit'
-      reorder_level         as ReorderLevel,
-
       @EndUserText.label: 'Unit'
       unit                  as Unit,
 

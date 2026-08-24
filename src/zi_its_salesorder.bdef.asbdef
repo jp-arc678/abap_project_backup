@@ -16,7 +16,7 @@ authorization master ( global )
 
   field ( readonly, numbering : managed ) SOUUID;
   field ( readonly ) SONumber, OrderType, OverallStatus, TotalAmount,
-                     ApprovedBy, ApprovedAt,
+                     ApprovedBy, ApprovedAt, SalespersonID,
                      CreatedBy, CreatedAt, LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
   field ( mandatory ) BranchID;
 
@@ -24,8 +24,9 @@ authorization master ( global )
   determination assignSONumber on save { create; }
 
 
-  validation validateItems  on save { create; update; }
-  validation validateBranch on save { create; update; field BranchID; }
+  validation validateItems      on save { create; update; }
+  validation validateBranch     on save { create; update; field BranchID; }
+  validation validateSalesperson on save { create;         field SalespersonID; }
 
   action ( features : instance ) Submit   result [1] $self;
   action ( features : instance ) Approve  result [1] $self;
@@ -40,6 +41,7 @@ authorization master ( global )
   {
     validation validateItems;
     validation validateBranch;
+    validation validateSalesperson;
     validation SalesOrderItem~validateQuantity;
     validation SalesOrderItem~validateStock;
   }

@@ -24,7 +24,7 @@ authorization master ( global )
   //--- validations ---
   validation validateProductID on save { create;         field ProductID; }
   validation validateCategory  on save { create; update; field Category; }
-  validation validatePrices    on save { create; update; field SalePrice, CostPrice, ReorderLevel; }
+  validation validatePrices    on save { create; update; field SalePrice, CostPrice; }
 
   //--- draft actions ---
   draft action Activate optimized;
@@ -48,8 +48,6 @@ authorization master ( global )
     SalePrice          = sale_price;
     CostPrice          = cost_price;
     CurrencyCode       = currency_code;
-    StockQty           = stock_qty;
-    ReorderLevel       = reorder_level;
     Unit               = unit;
     IsActive           = is_active;
     CreatedBy          = created_by;
