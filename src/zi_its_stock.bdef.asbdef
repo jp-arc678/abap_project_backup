@@ -16,7 +16,7 @@ etag master LocalLastChangedAt
 
   //--- field characteristics ---
   field ( mandatory : create, readonly : update ) BranchID, ProductID;
-  field ( readonly ) CreatedBy, CreatedAt, LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
+  field ( readonly ) StockCriticality,CreatedBy, CreatedAt, LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
 
   //--- determinations ---
   determination setDefaults      on modify { create; }

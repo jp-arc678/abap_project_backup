@@ -23,7 +23,7 @@ define root view entity ZC_ITS_STOCK
       Unit,
       LastMovementDate,
 
-      case when QtyOnHand < ReorderLevel then 1 else 3 end as StockCriticality,
+      StockCriticality,
 
       CreatedBy,
       CreatedAt,

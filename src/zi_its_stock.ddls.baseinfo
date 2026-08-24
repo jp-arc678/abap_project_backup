@@ -6,7 +6,10 @@
 "ZITS_STOCK"
 ],
 "ASSOCIATED":
-[],
+[
+"ZI_ITS_BRANCH",
+"ZI_ITS_PRODUCT"
+],
 "BASE":
 [],
 "ANNO_REF":

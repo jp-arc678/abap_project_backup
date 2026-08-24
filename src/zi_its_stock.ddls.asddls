@@ -22,7 +22,10 @@ define root view entity ZI_ITS_STOCK
       @EndUserText.label: 'Reorder Level'
       @Semantics.quantity.unitOfMeasure: 'Unit'
       reorder_level         as ReorderLevel,
-
+            @EndUserText.label: 'Stock Criticality'
+      cast(
+        case when qty_on_hand < reorder_level then 1 else 3 end
+        as abap.int1 ) as StockCriticality,
       @EndUserText.label: 'Unit'
       unit                  as Unit,
 
