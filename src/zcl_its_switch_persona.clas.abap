@@ -50,8 +50,8 @@ CLASS zcl_its_switch_persona IMPLEMENTATION.
 
 *--- Branch manager (approves branch-level orders) ----------------------
 *   lv_role = 'M'.  lv_branch = 'BR01'.  lv_label = 'Branch Manager @ Siam Paragon'.
-   lv_role = 'M'.  lv_branch = 'BR02'.  lv_label = 'Branch Manager @ Central Ladprao'.
-*   lv_role = 'M'.  lv_branch = 'BR03'.  lv_label = 'Branch Manager @ Chiang Mai'.
+*   lv_role = 'M'.  lv_branch = 'BR02'.  lv_label = 'Branch Manager @ Central Ladprao'.
+   lv_role = 'M'.  lv_branch = 'BR03'.  lv_label = 'Branch Manager @ Chiang Mai'.
 
 *--- Regional manager (approves high-value orders, all branches) --------
 *   lv_role = 'R'.  lv_branch = 'BR01'.  lv_label = 'Regional Manager (Central)'.
