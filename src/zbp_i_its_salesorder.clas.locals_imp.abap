@@ -57,10 +57,10 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
       RESULT DATA(orders).
 
     "--- home branch of the current user, if any, for the auto-fill below ---
-    DATA(current_user) = cl_abap_context_info=>get_user_technical_name( ).
+    DATA(current_user) = to_upper( cl_abap_context_info=>get_user_technical_name( ) ).
     SELECT SINGLE FROM zits_employee
       FIELDS branch_id
-      WHERE upper( user_name ) = @to_upper( current_user )
+      WHERE upper( user_name ) = @current_user AND is_active = 'X'
       INTO @DATA(user_branch_id).
 
     DATA updates TYPE TABLE FOR UPDATE zi_its_salesorder.
