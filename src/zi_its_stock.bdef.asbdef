@@ -20,7 +20,7 @@ etag master LocalLastChangedAt
 
   //--- determinations ---
   determination setDefaults      on modify { create; }
-  determination setMovementDate  on modify { create; update; }
+  determination setMovementDate  on modify { field QtyOnHand; }
 
   //--- validations ---
   validation validateBranch  on save { create;         field BranchID; }
