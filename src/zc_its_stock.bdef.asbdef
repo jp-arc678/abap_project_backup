@@ -1,0 +1,9 @@
+projection;
+strict ( 2 );
+
+define behavior for ZC_ITS_STOCK alias Stock
+{
+  // ไม่ประกาศ use create / use update / use delete
+  // → หน้าจอเป็น read-only ทั้งหมด
+  // สต๊อกเปลี่ยนได้ผ่านเอกสาร (SO/PO/STO) ผ่าน EML เท่านั้น
+}
