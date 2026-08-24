@@ -1,15 +1,69 @@
 @Metadata.layer: #CORE
-annotate view ZC_ITS_STOCK
-    with 
-{ 
 
-    @UI.facet: [ { id: 'General',
+@UI: {
+  headerInfo: {
+    typeName: 'Stock',
+    typeNamePlural: 'Stock',
+    title:       { type: #STANDARD, value: 'ProductName' },
+    description: { type: #STANDARD, value: 'BranchID' }
+  }
+}
+
+annotate view ZC_ITS_STOCK with
+{
+  @UI.facet: [ { id: 'General',
                  purpose: #STANDARD,
                  type: #IDENTIFICATION_REFERENCE,
-                 label: 'place holder Details',
+                 label: 'Stock Details',
                  position: 10 } ]
-    
-    placeholderid;
-    
+
+  @UI: { lineItem:       [ { position: 10, importance: #HIGH } ],
+         identification: [ { position: 10 } ],
+         selectionField: [ { position: 10 } ] }
+  BranchID;
+
+  @UI: { identification: [ { position: 15 } ] }
+  BranchName;
+
+  @UI: { lineItem:       [ { position: 20, importance: #HIGH } ],
+         identification: [ { position: 20 } ],
+         selectionField: [ { position: 20 } ] }
+  ProductID;
+
+  @UI: { lineItem:       [ { position: 30, importance: #HIGH } ],
+         identification: [ { position: 30 } ] }
+  ProductName;
+
+  @UI: { lineItem:       [ { position: 40, importance: #HIGH, criticality: 'StockCriticality' } ],
+         identification: [ { position: 40 } ] }
+  QtyOnHand;
+
+  @UI.hidden: true
+  StockCriticality;
+
+  @UI: { identification: [ { position: 50 } ] }
+  QtyReserved;
+
+  @UI: { lineItem:       [ { position: 50, importance: #MEDIUM } ],
+         identification: [ { position: 60 } ] }
+  Unit;
+
+  @UI: { lineItem:       [ { position: 60, importance: #MEDIUM } ],
+         identification: [ { position: 70 } ] }
+  ReorderLevel;
+
+  @UI: { identification: [ { position: 80 } ] }
+  LastMovementDate;
+
+  @UI.hidden: true
+  CreatedBy;
+  @UI.hidden: true
+  CreatedAt;
+  @UI.hidden: true
+  LocalLastChangedBy;
+  @UI.hidden: true
+  LocalLastChangedAt;
+  @UI.hidden: true
+  LastChangedAt;
 }
 

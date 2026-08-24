@@ -11,9 +11,21 @@ etag master LocalLastChangedAt
   update;
   delete;
 
-  field ( readonly ) BranchID, ProductID,
-                     CreatedBy, CreatedAt,
-                     LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
+  // NOTE: QtyOnHand is intentionally NOT declared readonly — SalesOrder/PurchaseOrder
+  // write it via EML (Complete/Receive actions). field(readonly) here would block that (see CLAUDE.md §7.2).
+
+  //--- field characteristics ---
+  field ( mandatory : create, readonly : update ) BranchID, ProductID;
+  field ( readonly ) CreatedBy, CreatedAt, LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
+
+  //--- determinations ---
+  determination setDefaults      on modify { create; }
+  determination setMovementDate  on modify { create; update; }
+
+  //--- validations ---
+  validation validateBranch  on save { create;         field BranchID; }
+  validation validateProduct on save { create;         field ProductID; }
+  validation validateQty     on save { create; update; field QtyOnHand, QtyReserved; }
 
   mapping for zits_stock
   {

@@ -1,4 +1,4 @@
-@EndUserText.label: 'service def for stock'
+@EndUserText.label: 'Service Definition for IT Shop Stock'
 define service ZUI_ITS_STOCK {
-  expose ZI_ITS_STOCK;
+  expose ZC_ITS_STOCK as Stock;
 }
