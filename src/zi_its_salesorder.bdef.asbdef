@@ -9,7 +9,7 @@ lock master total etag LastChangedAt
 etag master LocalLastChangedAt
 authorization master ( global )
 {
-  create;
+  create ( authorization : global );
   update ( features : instance );
   delete ( features : instance );
   association _Item { create; }
@@ -76,8 +76,8 @@ authorization master ( global )
  authorization dependent by _SalesOrder
  etag master LocalLastChangedAt
  {
-   update;
-   delete;
+   update ( features : instance );
+   delete ( features : instance );
    association _SalesOrder;
 
    field ( readonly, numbering : managed ) SOItemUUID;

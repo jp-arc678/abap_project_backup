@@ -14,6 +14,8 @@ CLASS lhc_PurchaseOrder DEFINITION INHERITING FROM cl_abap_behavior_handler.
     METHODS validateQuantity FOR VALIDATE ON SAVE    IMPORTING keys FOR PurchaseOrderItem~validateQuantity.
     METHODS get_instance_features FOR INSTANCE FEATURES
       IMPORTING keys REQUEST requested_features FOR PurchaseOrder RESULT result.
+    METHODS getItemFeatures FOR INSTANCE FEATURES
+      IMPORTING keys REQUEST requested_features FOR PurchaseOrderItem RESULT result.
     METHODS Submit  FOR MODIFY IMPORTING keys FOR ACTION PurchaseOrder~Submit  RESULT result.
     METHODS Approve FOR MODIFY IMPORTING keys FOR ACTION PurchaseOrder~Approve RESULT result.
     METHODS Reject  FOR MODIFY IMPORTING keys FOR ACTION PurchaseOrder~Reject  RESULT result.
@@ -92,7 +94,63 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
       ) ).
   ENDMETHOD.
 
+*--------------------------------------------------------------------*
+* GLOBAL AUTHORIZATION - regional managers cannot create purchase
+* orders (disables the "Create" button on the list report itself,
+* before any draft exists - see also validateCreatorRole, which is
+* the same rule enforced again at save time as a safety net)
+*--------------------------------------------------------------------*
   METHOD get_global_authorizations.
+
+    IF requested_authorizations-%create = if_abap_behv=>mk-on.
+
+      DATA(current_user) = to_upper( cl_abap_context_info=>get_user_technical_name( ) ).
+
+      SELECT SINGLE FROM zits_employee
+        FIELDS role_code
+        WHERE upper( user_name ) = @current_user
+          AND is_active = 'X'
+        INTO @DATA(creator_role).
+
+      result-%create = COND #( WHEN creator_role = 'R'
+                               THEN if_abap_behv=>auth-unauthorized
+                               ELSE if_abap_behv=>auth-allowed ).
+
+    ENDIF.
+
+  ENDMETHOD.
+
+
+*--------------------------------------------------------------------*
+* ITEM FEATURES - items are locked once the parent order is Received
+* (same "no edits after the final state" rule as the header)
+*--------------------------------------------------------------------*
+  METHOD getItemFeatures.
+
+    LOOP AT keys INTO DATA(item_key).
+
+      READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
+        ENTITY PurchaseOrderItem BY \_PurchaseOrder
+          FIELDS ( OverallStatus )
+          WITH VALUE #( ( %tky = item_key-%tky ) )
+        RESULT DATA(headers).
+
+      READ TABLE headers INTO DATA(header) INDEX 1.
+
+      DATA(is_locked) = COND abap_bool( WHEN sy-subrc = 0 AND header-OverallStatus = 'R'
+                                        THEN abap_true ELSE abap_false ).
+
+      APPEND VALUE #( %tky    = item_key-%tky
+                      %update = COND #( WHEN is_locked = abap_true
+                                        THEN if_abap_behv=>fc-o-disabled
+                                        ELSE if_abap_behv=>fc-o-enabled )
+                      %delete = COND #( WHEN is_locked = abap_true
+                                        THEN if_abap_behv=>fc-o-disabled
+                                        ELSE if_abap_behv=>fc-o-enabled )
+                    ) TO result.
+
+    ENDLOOP.
+
   ENDMETHOD.
 
   METHOD Approve.

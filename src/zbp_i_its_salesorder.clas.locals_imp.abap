@@ -36,6 +36,9 @@ CLASS lhc_SalesOrder DEFINITION INHERITING FROM cl_abap_behavior_handler.
     METHODS get_instance_features FOR INSTANCE FEATURES
       IMPORTING keys REQUEST requested_features FOR SalesOrder RESULT result.
 
+    METHODS getItemFeatures FOR INSTANCE FEATURES
+      IMPORTING keys REQUEST requested_features FOR SalesOrderItem RESULT result.
+
     METHODS Submit   FOR MODIFY IMPORTING keys FOR ACTION SalesOrder~Submit   RESULT result.
     METHODS Approve  FOR MODIFY IMPORTING keys FOR ACTION SalesOrder~Approve  RESULT result.
     METHODS Reject   FOR MODIFY IMPORTING keys FOR ACTION SalesOrder~Reject   RESULT result.
@@ -47,7 +50,30 @@ ENDCLASS.
 
 CLASS lhc_SalesOrder IMPLEMENTATION.
 
+*--------------------------------------------------------------------*
+* GLOBAL AUTHORIZATION - regional managers cannot create sales orders
+* (this is what disables the "Create" button on the list report
+* itself, before any draft exists - see also validateCreatorRole,
+* which is the same rule enforced again at save time as a safety net)
+*--------------------------------------------------------------------*
   METHOD get_global_authorizations.
+
+    IF requested_authorizations-%create = if_abap_behv=>mk-on.
+
+      DATA(current_user) = to_upper( cl_abap_context_info=>get_user_technical_name( ) ).
+
+      SELECT SINGLE FROM zits_employee
+        FIELDS role_code
+        WHERE upper( user_name ) = @current_user
+          AND is_active = 'X'
+        INTO @DATA(creator_role).
+
+      result-%create = COND #( WHEN creator_role = 'R'
+                               THEN if_abap_behv=>auth-unauthorized
+                               ELSE if_abap_behv=>auth-allowed ).
+
+    ENDIF.
+
   ENDMETHOD.
 
 
@@ -173,6 +199,39 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
           WITH updates
         REPORTED DATA(rep).
     ENDIF.
+
+  ENDMETHOD.
+
+
+*--------------------------------------------------------------------*
+* ITEM FEATURES - items are locked once the parent order is Completed
+* (same "no edits after the final state" rule as the header)
+*--------------------------------------------------------------------*
+  METHOD getItemFeatures.
+
+    LOOP AT keys INTO DATA(item_key).
+
+      READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+        ENTITY SalesOrderItem BY \_SalesOrder
+          FIELDS ( OverallStatus )
+          WITH VALUE #( ( %tky = item_key-%tky ) )
+        RESULT DATA(headers).
+
+      READ TABLE headers INTO DATA(header) INDEX 1.
+
+      DATA(is_locked) = COND abap_bool( WHEN sy-subrc = 0 AND header-OverallStatus = 'F'
+                                        THEN abap_true ELSE abap_false ).
+
+      APPEND VALUE #( %tky    = item_key-%tky
+                      %update = COND #( WHEN is_locked = abap_true
+                                        THEN if_abap_behv=>fc-o-disabled
+                                        ELSE if_abap_behv=>fc-o-enabled )
+                      %delete = COND #( WHEN is_locked = abap_true
+                                        THEN if_abap_behv=>fc-o-disabled
+                                        ELSE if_abap_behv=>fc-o-enabled )
+                    ) TO result.
+
+    ENDLOOP.
 
   ENDMETHOD.
 
