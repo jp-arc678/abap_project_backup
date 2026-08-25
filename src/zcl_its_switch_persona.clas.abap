@@ -14,17 +14,20 @@ CLASS zcl_its_switch_persona IMPLEMENTATION.
   METHOD if_oo_adt_classrun~main.
 
 ************************************************************************
-*  PERSONA SWITCHER — for testing role and branch behaviour
+*  PERSONA SWITCHER — for testing role, branch and region behaviour
 *
 *  The trial system has only one real user, so this class re-points that
 *  user at a different employee record. Uncomment ONE line in the block
 *  below, run with F9, then reload the Fiori app.
 *
-*  role_code : M = Branch Manager     branch_id : BR01 = Siam Paragon
-*              R = Regional Manager               BR02 = Central Ladprao
-*              S = Salesperson                    BR03 = Central Chiang Mai
-*              W = Warehouse Staff                ''   = head office / all
-*              A = Accounting
+*  role_code : M = Branch Manager      branch_id : BR01 = Siam Paragon
+*              R = Regional Manager                BR02 = Central Ladprao
+*              S = Salesperson                     BR03 = Central Chiang Mai
+*              W = Warehouse Staff     region_id : CEN  = Central Region
+*              A = Accounting                      NOR  = Northern Region
+*
+*  S / W / M match on branch_id. R matches on region_id. A matches on
+*  role only (there is exactly one accounting employee, at head office).
 ************************************************************************
 
     "--- the technical user actually logged on ---
@@ -32,6 +35,7 @@ CLASS zcl_its_switch_persona IMPLEMENTATION.
 
     DATA lv_role   TYPE zits_employee-role_code.
     DATA lv_branch TYPE zits_employee-branch_id.
+    DATA lv_region TYPE zits_employee-region_id.
     DATA lv_label  TYPE string.
 
 *======================================================================*
@@ -51,14 +55,14 @@ CLASS zcl_its_switch_persona IMPLEMENTATION.
 *--- Branch manager (approves branch-level orders) ----------------------
 *   lv_role = 'M'.  lv_branch = 'BR01'.  lv_label = 'Branch Manager @ Siam Paragon'.
 *   lv_role = 'M'.  lv_branch = 'BR02'.  lv_label = 'Branch Manager @ Central Ladprao'.
-   lv_role = 'M'.  lv_branch = 'BR03'.  lv_label = 'Branch Manager @ Chiang Mai'.
+*  lv_role = 'M'.  lv_branch = 'BR03'.  lv_label = 'Branch Manager @ Chiang Mai'.
 
-*--- Regional manager (approves high-value orders, all branches) --------
-*   lv_role = 'R'.  lv_branch = 'BR01'.  lv_label = 'Regional Manager (Central)'.
-*   lv_role = 'R'.  lv_branch = 'BR03'.  lv_label = 'Regional Manager (North)'.
+*--- Regional manager (approves high-value orders, whole region) --------
+   lv_role = 'R'.  lv_region = 'CEN'.  lv_label = 'Regional Manager (Central)'.
+*   lv_role = 'R'.  lv_region = 'NOR'.  lv_label = 'Regional Manager (North)'.
 
-*--- Accounting (head office, no branch) -------------------------------
-*   lv_role = 'A'.  lv_branch = ''.      lv_label = 'Accounting @ Head Office'.
+*--- Accounting (head office, no branch, no region) ---------------------
+*   lv_role = 'A'.  lv_label = 'Accounting @ Head Office'.
 
 *======================================================================*
 
@@ -69,16 +73,22 @@ CLASS zcl_its_switch_persona IMPLEMENTATION.
       WHERE upper( user_name ) = @current_user.
 
     "--- find an employee that matches the chosen persona ---
+    "    S/W/M match on branch, R matches on region, A matches on role only
     SELECT SINGLE FROM zits_employee
       FIELDS employee_id, employee_name
       WHERE role_code = @lv_role
-        AND branch_id = @lv_branch
         AND is_active = 'X'
+        AND ( ( @lv_role = 'R' AND region_id = @lv_region )
+           OR ( @lv_role = 'A' )
+           OR ( @lv_role <> 'R' AND @lv_role <> 'A' AND branch_id = @lv_branch ) )
       INTO @DATA(ls_target).
 
     IF sy-subrc <> 0.
       ROLLBACK WORK.
-      out->write( |[SWITCH] FAILED - no active employee with role { lv_role } at branch { lv_branch }| ).
+      out->write( |[SWITCH] FAILED - no active employee matches role { lv_role }| &&
+                  |{ COND #( WHEN lv_role = 'R' THEN | region { lv_region }|
+                            WHEN lv_role = 'A' THEN ''
+                            ELSE | branch { lv_branch }| ) }| ).
       out->write( |[SWITCH] Create one first, or pick another line.| ).
       RETURN.
     ENDIF.
@@ -96,16 +106,18 @@ CLASS zcl_its_switch_persona IMPLEMENTATION.
     out->write( |[SWITCH] You are now: { lv_label }| ).
     out->write( |[SWITCH] Employee   : { ls_target-employee_id } - { ls_target-employee_name }| ).
     out->write( |[SWITCH] Role       : { lv_role }| ).
-    out->write( |[SWITCH] Branch     : { COND #( WHEN lv_branch IS INITIAL THEN '(head office)' ELSE lv_branch ) }| ).
+    out->write( |[SWITCH] Scope      : { COND #( WHEN lv_role = 'R' THEN |region { lv_region }|
+                                                 WHEN lv_role = 'A' THEN 'whole company'
+                                                 ELSE |branch { lv_branch }| ) }| ).
     out->write( |[SWITCH] Technical  : { current_user }| ).
     out->write( || ).
     out->write( |[SWITCH] Reload the Fiori app to see the change.| ).
 
     "--- show the whole roster so it is obvious who holds the user now ---
     SELECT FROM zits_employee
-      FIELDS employee_id, employee_name, role_code, branch_id, user_name
+      FIELDS employee_id, employee_name, role_code, branch_id, region_id, user_name
       WHERE is_active = 'X'
-      ORDER BY branch_id, role_code, employee_id
+      ORDER BY branch_id, region_id, role_code, employee_id
       INTO TABLE @DATA(lt_roster).
 
     out->write( || ).
@@ -113,10 +125,12 @@ CLASS zcl_its_switch_persona IMPLEMENTATION.
     LOOP AT lt_roster INTO DATA(ls_row).
       DATA(lv_mark) = COND string( WHEN to_upper( ls_row-user_name ) = current_user
                                    THEN ' <== YOU' ELSE '' ).
-      out->write( |{ ls_row-employee_id }{ ls_row-role_code } | && |{ COND #( WHEN ls_row-branch_id IS INITIAL THEN 'HQ  ' ELSE ls_row-branch_id ) } | &&
+      DATA(lv_scope) = COND string( WHEN ls_row-branch_id IS NOT INITIAL THEN ls_row-branch_id
+                                    WHEN ls_row-region_id IS NOT INITIAL THEN |R:{ ls_row-region_id }|
+                                    ELSE 'HQ  ' ).
+      out->write( |{ ls_row-employee_id }{ ls_row-role_code } | && |{ lv_scope } | &&
                   |{ ls_row-employee_name }{ lv_mark }| ).
     ENDLOOP.
 
   ENDMETHOD.
 ENDCLASS.
-

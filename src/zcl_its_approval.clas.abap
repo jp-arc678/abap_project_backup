@@ -32,7 +32,8 @@ ENDCLASS.
 
 
 
-CLASS zcl_its_approval IMPLEMENTATION.
+CLASS ZCL_ITS_APPROVAL IMPLEMENTATION.
+
 
   METHOD get_required_level_so.
 
@@ -113,5 +114,4 @@ CLASS zcl_its_approval IMPLEMENTATION.
     ENDCASE.
 
   ENDMETHOD.
-
 ENDCLASS.

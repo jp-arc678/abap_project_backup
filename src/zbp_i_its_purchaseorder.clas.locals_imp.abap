@@ -76,7 +76,7 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
                                          THEN zcl_its_approval=>can_approve(
                                                 iv_user           = current_user
                                                 iv_branch_id      = order-BranchID
-                                                iv_required_level = order-ApprovalLevel )
+                                                iv_required_level = CONV i( order-ApprovalLevel ) )
                                          ELSE abap_false )
       IN
       ( %tky = order-%tky
@@ -104,7 +104,7 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
       IF zcl_its_approval=>can_approve(
            iv_user           = current_user
            iv_branch_id      = order-BranchID
-           iv_required_level = order-ApprovalLevel ) = abap_false.
+           iv_required_level = CONV i( order-ApprovalLevel ) ) = abap_false.
 
         APPEND VALUE #( %tky = order-%tky ) TO failed-purchaseorder.
         APPEND VALUE #( %tky = order-%tky %msg = new_message_with_text(
@@ -477,7 +477,7 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
       IF zcl_its_approval=>can_approve(
            iv_user           = current_user
            iv_branch_id      = order-BranchID
-           iv_required_level = order-ApprovalLevel ) = abap_false.
+           iv_required_level = CONV i( order-ApprovalLevel ) ) = abap_false.
 
         APPEND VALUE #( %tky = order-%tky ) TO failed-purchaseorder.
         APPEND VALUE #( %tky = order-%tky
