@@ -16,7 +16,7 @@ authorization master ( global )
   //--- field characteristics ---
   field ( mandatory : create, readonly : update ) EmployeeID;
   field ( mandatory ) EmployeeName, RoleCode, UserName;
-  field ( readonly ) RoleName, RegionName, CreatedBy, CreatedAt,
+  field ( readonly ) RoleName, RegionID, CreatedBy, CreatedAt,
                      LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
 
   //--- determinations ---
