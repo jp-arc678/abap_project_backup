@@ -19,6 +19,9 @@ CLASS lhc_SalesOrder DEFINITION INHERITING FROM cl_abap_behavior_handler.
     METHODS validateSalesperson FOR VALIDATE ON SAVE
       IMPORTING keys FOR SalesOrder~validateSalesperson.
 
+    METHODS validateCreatorRole FOR VALIDATE ON SAVE
+      IMPORTING keys FOR SalesOrder~validateCreatorRole.
+
     METHODS fetchProductData FOR DETERMINE ON MODIFY
       IMPORTING keys FOR SalesOrderItem~fetchProductData.
 
@@ -364,6 +367,36 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 
   ENDMETHOD.
 
+
+*--------------------------------------------------------------------*
+* VALIDATION - regional managers cannot create sales orders
+* (segregation of duties: an approver must not create what they approve)
+*--------------------------------------------------------------------*
+  METHOD validateCreatorRole.
+
+    DATA(current_user) = to_upper( cl_abap_context_info=>get_user_technical_name( ) ).
+
+    SELECT SINGLE FROM zits_employee
+      FIELDS role_code
+      WHERE upper( user_name ) = @current_user
+        AND is_active = 'X'
+      INTO @DATA(creator_role).
+
+    IF creator_role <> 'R'.
+      RETURN.
+    ENDIF.
+
+    LOOP AT keys INTO DATA(key).
+      APPEND VALUE #( %tky = key-%tky ) TO failed-salesorder.
+      APPEND VALUE #( %tky = key-%tky
+                      %msg = new_message_with_text(
+                               severity = if_abap_behv_message=>severity-error
+                               text     = 'Regional managers cannot create sales orders' )
+                    ) TO reported-salesorder.
+    ENDLOOP.
+
+  ENDMETHOD.
+
   METHOD assignSONumber.
 
     "--- อ่าน order ที่กำลัง save และยังไม่มีเลข ---
@@ -418,10 +451,19 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
                                          THEN zcl_its_approval=>can_approve(
                                                 iv_user           = current_user
                                                 iv_branch_id      = order-BranchID
-                                                iv_required_level = order-ApprovalLevel )
+                                                iv_required_level = CONV i( order-ApprovalLevel ) )
                                          ELSE abap_false )
       IN
       ( %tky = order-%tky
+
+        "--- Completed is the final state: no more edits or deletion (document principle) ---
+        %update = COND #( WHEN order-OverallStatus = 'F'
+                          THEN if_abap_behv=>fc-o-disabled
+                          ELSE if_abap_behv=>fc-o-enabled )
+
+        %delete = COND #( WHEN order-OverallStatus = 'F'
+                          THEN if_abap_behv=>fc-o-disabled
+                          ELSE if_abap_behv=>fc-o-enabled )
 
         %action-Submit   = COND #( WHEN order-OverallStatus = 'D'
                                    THEN if_abap_behv=>fc-o-enabled
@@ -549,7 +591,7 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
       IF zcl_its_approval=>can_approve(
            iv_user           = current_user
            iv_branch_id      = order-BranchID
-           iv_required_level = order-ApprovalLevel ) = abap_false.
+           iv_required_level = CONV i( order-ApprovalLevel ) ) = abap_false.
 
         APPEND VALUE #( %tky = order-%tky ) TO failed-salesorder.
         APPEND VALUE #( %tky = order-%tky
@@ -608,7 +650,7 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
       IF zcl_its_approval=>can_approve(
            iv_user           = current_user
            iv_branch_id      = order-BranchID
-           iv_required_level = order-ApprovalLevel ) = abap_false.
+           iv_required_level = CONV i( order-ApprovalLevel ) ) = abap_false.
 
         APPEND VALUE #( %tky = order-%tky ) TO failed-salesorder.
         APPEND VALUE #( %tky = order-%tky

@@ -10,15 +10,15 @@ etag master LocalLastChangedAt
 authorization master ( global )
 {
   create;
-  update;
-  delete;
+  update ( features : instance );
+  delete ( features : instance );
   association _Item { create; }
 
   field ( readonly, numbering : managed ) POUUID;
   field ( readonly ) PONumber, OverallStatus, ApprovalLevel, TotalCost, ApprovedBy, ApprovedAt, ReceivedDate,
-                     WarehouseStaffID,
+                     WarehouseStaffID, BranchID,
                      CreatedBy, CreatedAt, LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
-  field ( mandatory ) SupplierID, BranchID;
+  field ( mandatory ) SupplierID;
 
   determination setHeaderDefaults on modify { create; }
   determination assignPONumber on save { create; }
@@ -26,6 +26,7 @@ authorization master ( global )
   validation validateBranch         on save { create; update; field BranchID; }
   validation validateSupplier       on save { create; update; field SupplierID; }
   validation validateWarehouseStaff on save { create;         field WarehouseStaffID; }
+  validation validateCreatorRole    on save { create; }
 
   action ( features : instance ) Submit  result [1] $self;
   action ( features : instance ) Approve result [1] $self;
@@ -43,6 +44,7 @@ authorization master ( global )
     validation validateBranch;
     validation validateSupplier;
     validation validateWarehouseStaff;
+    validation validateCreatorRole;
     validation PurchaseOrderItem~validateQuantity;
   }
 

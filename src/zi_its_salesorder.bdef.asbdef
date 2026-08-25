@@ -10,23 +10,23 @@ etag master LocalLastChangedAt
 authorization master ( global )
 {
   create;
-  update;
-  delete;
+  update ( features : instance );
+  delete ( features : instance );
   association _Item { create; }
 
   field ( readonly, numbering : managed ) SOUUID;
   field ( readonly ) SONumber, OrderType, OverallStatus, ApprovalLevel, TotalAmount,
-                     ApprovedBy, ApprovedAt, SalespersonID,
+                     ApprovedBy, ApprovedAt, SalespersonID, BranchID,
                      CreatedBy, CreatedAt, LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
-  field ( mandatory ) BranchID;
 
   determination setHeaderDefaults on modify { create; }
   determination assignSONumber on save { create; }
 
 
-  validation validateItems      on save { create; update; }
-  validation validateBranch     on save { create; update; field BranchID; }
+  validation validateItems       on save { create; update; }
+  validation validateBranch      on save { create; update; field BranchID; }
   validation validateSalesperson on save { create;         field SalespersonID; }
+  validation validateCreatorRole on save { create; }
 
   action ( features : instance ) Submit   result [1] $self;
   action ( features : instance ) Approve  result [1] $self;
@@ -42,6 +42,7 @@ authorization master ( global )
     validation validateItems;
     validation validateBranch;
     validation validateSalesperson;
+    validation validateCreatorRole;
     validation SalesOrderItem~validateQuantity;
     validation SalesOrderItem~validateStock;
   }

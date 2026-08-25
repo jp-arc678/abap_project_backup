@@ -9,6 +9,7 @@ CLASS lhc_PurchaseOrder DEFINITION INHERITING FROM cl_abap_behavior_handler.
     METHODS validateBranch   FOR VALIDATE ON SAVE    IMPORTING keys FOR PurchaseOrder~validateBranch.
     METHODS validateSupplier FOR VALIDATE ON SAVE    IMPORTING keys FOR PurchaseOrder~validateSupplier.
     METHODS validateWarehouseStaff FOR VALIDATE ON SAVE IMPORTING keys FOR PurchaseOrder~validateWarehouseStaff.
+    METHODS validateCreatorRole    FOR VALIDATE ON SAVE IMPORTING keys FOR PurchaseOrder~validateCreatorRole.
     METHODS processLine      FOR DETERMINE ON MODIFY IMPORTING keys FOR PurchaseOrderItem~processLine.
     METHODS validateQuantity FOR VALIDATE ON SAVE    IMPORTING keys FOR PurchaseOrderItem~validateQuantity.
     METHODS get_instance_features FOR INSTANCE FEATURES
@@ -76,10 +77,13 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
                                          THEN zcl_its_approval=>can_approve(
                                                 iv_user           = current_user
                                                 iv_branch_id      = order-BranchID
-                                                iv_required_level = order-ApprovalLevel )
+                                                iv_required_level = CONV i( order-ApprovalLevel ) )
                                          ELSE abap_false )
       IN
       ( %tky = order-%tky
+        "--- Received is the final state: no more edits or deletion (document principle) ---
+        %update = COND #( WHEN order-OverallStatus = 'R' THEN if_abap_behv=>fc-o-disabled ELSE if_abap_behv=>fc-o-enabled )
+        %delete = COND #( WHEN order-OverallStatus = 'R' THEN if_abap_behv=>fc-o-disabled ELSE if_abap_behv=>fc-o-enabled )
         %action-Submit  = COND #( WHEN order-OverallStatus = 'D' THEN if_abap_behv=>fc-o-enabled ELSE if_abap_behv=>fc-o-disabled )
         %action-Approve = COND #( WHEN may_approve = abap_true THEN if_abap_behv=>fc-o-enabled ELSE if_abap_behv=>fc-o-disabled )
         %action-Reject  = COND #( WHEN may_approve = abap_true THEN if_abap_behv=>fc-o-enabled ELSE if_abap_behv=>fc-o-disabled )
@@ -104,7 +108,7 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
       IF zcl_its_approval=>can_approve(
            iv_user           = current_user
            iv_branch_id      = order-BranchID
-           iv_required_level = order-ApprovalLevel ) = abap_false.
+           iv_required_level = CONV i( order-ApprovalLevel ) ) = abap_false.
 
         APPEND VALUE #( %tky = order-%tky ) TO failed-purchaseorder.
         APPEND VALUE #( %tky = order-%tky %msg = new_message_with_text(
@@ -425,6 +429,36 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
 
   ENDMETHOD.
 
+
+*--------------------------------------------------------------------*
+* VALIDATION - regional managers cannot create purchase orders
+* (segregation of duties: an approver must not create what they approve)
+*--------------------------------------------------------------------*
+  METHOD validateCreatorRole.
+
+    DATA(current_user) = to_upper( cl_abap_context_info=>get_user_technical_name( ) ).
+
+    SELECT SINGLE FROM zits_employee
+      FIELDS role_code
+      WHERE upper( user_name ) = @current_user
+        AND is_active = 'X'
+      INTO @DATA(creator_role).
+
+    IF creator_role <> 'R'.
+      RETURN.
+    ENDIF.
+
+    LOOP AT keys INTO DATA(key).
+      APPEND VALUE #( %tky = key-%tky ) TO failed-purchaseorder.
+      APPEND VALUE #( %tky = key-%tky
+                      %msg = new_message_with_text(
+                               severity = if_abap_behv_message=>severity-error
+                               text     = 'Regional managers cannot create purchase orders' )
+                    ) TO reported-purchaseorder.
+    ENDLOOP.
+
+  ENDMETHOD.
+
   METHOD validateQuantity.
 
     READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
@@ -477,7 +511,7 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
       IF zcl_its_approval=>can_approve(
            iv_user           = current_user
            iv_branch_id      = order-BranchID
-           iv_required_level = order-ApprovalLevel ) = abap_false.
+           iv_required_level = CONV i( order-ApprovalLevel ) ) = abap_false.
 
         APPEND VALUE #( %tky = order-%tky ) TO failed-purchaseorder.
         APPEND VALUE #( %tky = order-%tky
