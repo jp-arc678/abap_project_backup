@@ -81,6 +81,9 @@ annotate view ZC_ITS_SALESORDER with
   @UI.hidden: true
   StatusCriticality;
 
+  @UI: { identification: [ { position: 65 } ] }
+  ApprovalLevel;
+
   @UI: { identification: [ { position: 70 } ] }
   RejectionReason;
 

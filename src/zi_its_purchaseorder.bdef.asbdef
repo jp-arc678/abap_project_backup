@@ -15,7 +15,7 @@ authorization master ( global )
   association _Item { create; }
 
   field ( readonly, numbering : managed ) POUUID;
-  field ( readonly ) PONumber, OverallStatus, TotalCost, ApprovedBy, ApprovedAt, ReceivedDate,
+  field ( readonly ) PONumber, OverallStatus, ApprovalLevel, TotalCost, ApprovedBy, ApprovedAt, ReceivedDate,
                      WarehouseStaffID,
                      CreatedBy, CreatedAt, LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
   field ( mandatory ) SupplierID, BranchID;
@@ -49,7 +49,7 @@ authorization master ( global )
   mapping for zits_po
   {
     POUUID = po_uuid;  PONumber = po_number;  BranchID = branch_id;  SupplierID = supplier_id;
-    OverallStatus = overall_status;  WarehouseStaffID = warehouse_staff_id;
+    OverallStatus = overall_status;  ApprovalLevel = approval_level;  WarehouseStaffID = warehouse_staff_id;
     OrderDate = order_date;  ReceivedDate = received_date;  TotalCost = total_cost;
     CurrencyCode = currency_code;  ApprovedBy = approved_by;  ApprovedAt = approved_at;
     RejectionReason = rejection_reason;  CreatedBy = created_by;  CreatedAt = created_at;

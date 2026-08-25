@@ -23,6 +23,7 @@ define root view entity ZC_ITS_PURCHASEORDER
 
       @ObjectModel.text.element: [ 'OverallStatusText' ]
       OverallStatus,
+      ApprovalLevel,
       _Base.OverallStatusText as OverallStatusText,
       _Base.StatusCriticality as StatusCriticality,
       @ObjectModel.text.element: [ 'WarehouseStaffName' ]

@@ -16,8 +16,8 @@ CLASS lhc_Employee DEFINITION INHERITING FROM cl_abap_behavior_handler.
     METHODS validateUserName FOR VALIDATE ON SAVE
       IMPORTING keys FOR Employee~validateUserName.
 
-    METHODS validateBranch FOR VALIDATE ON SAVE
-      IMPORTING keys FOR Employee~validateBranch.
+    METHODS validateScope FOR VALIDATE ON SAVE
+      IMPORTING keys FOR Employee~validateScope.
 
 ENDCLASS.
 
@@ -119,13 +119,15 @@ CLASS lhc_Employee IMPLEMENTATION.
       "--- allowed values ---
       IF employee-RoleCode <> 'M'
      AND employee-RoleCode <> 'S'
-     AND employee-RoleCode <> 'W'.
+     AND employee-RoleCode <> 'W'
+     AND employee-RoleCode <> 'R'
+     AND employee-RoleCode <> 'A'.
         APPEND VALUE #( %tky = employee-%tky ) TO failed-employee.
         APPEND VALUE #( %tky              = employee-%tky
                         %element-RoleCode = if_abap_behv=>mk-on
                         %msg = new_message_with_text(
                                  severity = if_abap_behv_message=>severity-error
-                                 text     = 'Role must be M (Manager), S (Sales) or W (Warehouse)' )
+                                 text     = 'Role must be M, S, W, R or A' )
                       ) TO reported-employee.
         CONTINUE.
       ENDIF.
@@ -203,43 +205,115 @@ CLASS lhc_Employee IMPLEMENTATION.
 
 
 *--------------------------------------------------------------------*
-* VALIDATION - Branch must be entered and must exist
+* VALIDATION - authorization scope: exactly one of Branch/Region,
+* matching the role (S/W/M -> branch only, R -> region only, A -> neither)
 *--------------------------------------------------------------------*
-  METHOD validateBranch.
+  METHOD validateScope.
 
     READ ENTITIES OF zi_its_employee IN LOCAL MODE
       ENTITY Employee
-        FIELDS ( BranchID )
+        FIELDS ( RoleCode BranchID RegionID )
         WITH CORRESPONDING #( keys )
       RESULT DATA(employees).
 
     LOOP AT employees INTO DATA(employee).
 
-      IF employee-BranchID IS INITIAL.
-        APPEND VALUE #( %tky = employee-%tky ) TO failed-employee.
-        APPEND VALUE #( %tky              = employee-%tky
-                        %element-BranchID = if_abap_behv=>mk-on
-                        %msg = new_message_with_text(
-                                 severity = if_abap_behv_message=>severity-error
-                                 text     = 'Branch must be entered' )
-                      ) TO reported-employee.
-        CONTINUE.
-      ENDIF.
+      CASE employee-RoleCode.
 
-      SELECT SINGLE FROM zits_branch
-        FIELDS branch_id
-        WHERE branch_id = @employee-BranchID
-        INTO @DATA(existing_branch).
+        WHEN 'S' OR 'W' OR 'M'.
 
-      IF existing_branch IS INITIAL.
-        APPEND VALUE #( %tky = employee-%tky ) TO failed-employee.
-        APPEND VALUE #( %tky              = employee-%tky
-                        %element-BranchID = if_abap_behv=>mk-on
-                        %msg = new_message_with_text(
-                                 severity = if_abap_behv_message=>severity-error
-                                 text     = 'Branch does not exist' )
-                      ) TO reported-employee.
-      ENDIF.
+          IF employee-BranchID IS INITIAL.
+            APPEND VALUE #( %tky = employee-%tky ) TO failed-employee.
+            APPEND VALUE #( %tky              = employee-%tky
+                            %element-BranchID = if_abap_behv=>mk-on
+                            %msg = new_message_with_text(
+                                     severity = if_abap_behv_message=>severity-error
+                                     text     = 'Branch is required for this role' )
+                          ) TO reported-employee.
+            CONTINUE.
+          ENDIF.
+
+          IF employee-RegionID IS NOT INITIAL.
+            APPEND VALUE #( %tky = employee-%tky ) TO failed-employee.
+            APPEND VALUE #( %tky              = employee-%tky
+                            %element-RegionID = if_abap_behv=>mk-on
+                            %msg = new_message_with_text(
+                                     severity = if_abap_behv_message=>severity-error
+                                     text     = 'Region must be empty for a branch role' )
+                          ) TO reported-employee.
+            CONTINUE.
+          ENDIF.
+
+          SELECT SINGLE FROM zits_branch
+            FIELDS branch_id
+            WHERE branch_id = @employee-BranchID
+              AND is_active = 'X'
+            INTO @DATA(valid_branch).
+
+          IF valid_branch IS INITIAL.
+            APPEND VALUE #( %tky = employee-%tky ) TO failed-employee.
+            APPEND VALUE #( %tky              = employee-%tky
+                            %element-BranchID = if_abap_behv=>mk-on
+                            %msg = new_message_with_text(
+                                     severity = if_abap_behv_message=>severity-error
+                                     text     = 'Branch is not valid or inactive' )
+                          ) TO reported-employee.
+          ENDIF.
+
+        WHEN 'R'.
+
+          IF employee-RegionID IS INITIAL.
+            APPEND VALUE #( %tky = employee-%tky ) TO failed-employee.
+            APPEND VALUE #( %tky              = employee-%tky
+                            %element-RegionID = if_abap_behv=>mk-on
+                            %msg = new_message_with_text(
+                                     severity = if_abap_behv_message=>severity-error
+                                     text     = 'Region is required for a regional manager' )
+                          ) TO reported-employee.
+            CONTINUE.
+          ENDIF.
+
+          IF employee-BranchID IS NOT INITIAL.
+            APPEND VALUE #( %tky = employee-%tky ) TO failed-employee.
+            APPEND VALUE #( %tky              = employee-%tky
+                            %element-BranchID = if_abap_behv=>mk-on
+                            %msg = new_message_with_text(
+                                     severity = if_abap_behv_message=>severity-error
+                                     text     = 'Branch must be empty for a regional manager' )
+                          ) TO reported-employee.
+            CONTINUE.
+          ENDIF.
+
+          SELECT SINGLE FROM zits_region
+            FIELDS region_id
+            WHERE region_id = @employee-RegionID
+              AND is_active = 'X'
+            INTO @DATA(valid_region).
+
+          IF valid_region IS INITIAL.
+            APPEND VALUE #( %tky = employee-%tky ) TO failed-employee.
+            APPEND VALUE #( %tky              = employee-%tky
+                            %element-RegionID = if_abap_behv=>mk-on
+                            %msg = new_message_with_text(
+                                     severity = if_abap_behv_message=>severity-error
+                                     text     = 'Region is not valid or inactive' )
+                          ) TO reported-employee.
+          ENDIF.
+
+        WHEN 'A'.
+
+          IF employee-BranchID IS NOT INITIAL OR employee-RegionID IS NOT INITIAL.
+            APPEND VALUE #( %tky = employee-%tky ) TO failed-employee.
+            APPEND VALUE #( %tky              = employee-%tky
+                            %element-BranchID = if_abap_behv=>mk-on
+                            %element-RegionID = if_abap_behv=>mk-on
+                            %msg = new_message_with_text(
+                                     severity = if_abap_behv_message=>severity-error
+                                     text     = 'Accounting must have no branch and no region' )
+                          ) TO reported-employee.
+          ENDIF.
+
+      ENDCASE.
 
     ENDLOOP.
 

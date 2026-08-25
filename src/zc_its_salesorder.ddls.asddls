@@ -18,6 +18,7 @@ define root view entity ZC_ITS_SALESORDER
       OrderType,
       @ObjectModel.text.element: [ 'OverallStatusText' ]
       OverallStatus,
+      ApprovalLevel,
 
       _Base.OverallStatusText as OverallStatusText,
       _Base.StatusCriticality as StatusCriticality,

@@ -407,22 +407,31 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 
     READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
       ENTITY SalesOrder
-        FIELDS ( OverallStatus )
+        FIELDS ( OverallStatus BranchID ApprovalLevel )
         WITH CORRESPONDING #( keys )
       RESULT DATA(orders).
 
+    DATA(current_user) = to_upper( cl_abap_context_info=>get_user_technical_name( ) ).
+
     result = VALUE #( FOR order IN orders
+      LET may_approve = COND abap_bool( WHEN order-OverallStatus = 'P'
+                                         THEN zcl_its_approval=>can_approve(
+                                                iv_user           = current_user
+                                                iv_branch_id      = order-BranchID
+                                                iv_required_level = order-ApprovalLevel )
+                                         ELSE abap_false )
+      IN
       ( %tky = order-%tky
 
         %action-Submit   = COND #( WHEN order-OverallStatus = 'D'
                                    THEN if_abap_behv=>fc-o-enabled
                                    ELSE if_abap_behv=>fc-o-disabled )
 
-        %action-Approve  = COND #( WHEN order-OverallStatus = 'P'
+        %action-Approve  = COND #( WHEN may_approve = abap_true
                                    THEN if_abap_behv=>fc-o-enabled
                                    ELSE if_abap_behv=>fc-o-disabled )
 
-        %action-Reject   = COND #( WHEN order-OverallStatus = 'P'
+        %action-Reject   = COND #( WHEN may_approve = abap_true
                                    THEN if_abap_behv=>fc-o-enabled
                                    ELSE if_abap_behv=>fc-o-disabled )
 
@@ -487,7 +496,7 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
   METHOD Submit.
 
     READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
-      ENTITY SalesOrder FIELDS ( OverallStatus OrderType )
+      ENTITY SalesOrder FIELDS ( OverallStatus TotalAmount )
       WITH CORRESPONDING #( keys )
       RESULT DATA(orders).
 
@@ -497,13 +506,17 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
       IF order-OverallStatus <> 'D'.
         CONTINUE.
       ENDIF.
+
+      DATA(required_level) = zcl_its_approval=>get_required_level_so( order-TotalAmount ).
+
       APPEND VALUE #( %tky          = order-%tky
-                      OverallStatus = COND #( WHEN order-OrderType = 'S' THEN 'P' ELSE 'C' )
+                      ApprovalLevel = required_level
+                      OverallStatus = COND #( WHEN required_level = 0 THEN 'C' ELSE 'P' )
                     ) TO updates.
     ENDLOOP.
 
     MODIFY ENTITIES OF zi_its_salesorder IN LOCAL MODE
-      ENTITY SalesOrder UPDATE FIELDS ( OverallStatus ) WITH updates
+      ENTITY SalesOrder UPDATE FIELDS ( OverallStatus ApprovalLevel ) WITH updates
       REPORTED DATA(rep).
 
     READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
@@ -518,13 +531,10 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 *--------------------------------------------------------------------*
   METHOD Approve.
 
-    DATA(current_user) = cl_abap_context_info=>get_user_technical_name( ).
-    SELECT SINGLE FROM zits_employee FIELDS employee_id
-      WHERE user_name = @current_user AND role_code = 'M' AND is_active = 'X'
-      INTO @DATA(manager_id).
+    DATA(current_user) = to_upper( cl_abap_context_info=>get_user_technical_name( ) ).
 
     READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
-      ENTITY SalesOrder FIELDS ( OverallStatus )
+      ENTITY SalesOrder FIELDS ( OverallStatus BranchID ApprovalLevel )
       WITH CORRESPONDING #( keys )
       RESULT DATA(orders).
 
@@ -536,19 +546,32 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
-      IF manager_id IS INITIAL.
+      IF zcl_its_approval=>can_approve(
+           iv_user           = current_user
+           iv_branch_id      = order-BranchID
+           iv_required_level = order-ApprovalLevel ) = abap_false.
+
         APPEND VALUE #( %tky = order-%tky ) TO failed-salesorder.
         APPEND VALUE #( %tky = order-%tky
                         %msg = new_message_with_text(
                                  severity = if_abap_behv_message=>severity-error
-                                 text     = 'Only the manager can approve orders' )
+                                 text     = COND #(
+                                   WHEN order-ApprovalLevel = 2
+                                   THEN 'This order requires regional manager approval'
+                                   ELSE 'You may only approve orders for your own branch' ) )
                       ) TO reported-salesorder.
         CONTINUE.
       ENDIF.
 
+      SELECT SINGLE FROM zits_employee
+        FIELDS employee_id
+        WHERE upper( user_name ) = @current_user
+          AND is_active = 'X'
+        INTO @DATA(approver_id).
+
       APPEND VALUE #( %tky          = order-%tky
                       OverallStatus = 'C'
-                      ApprovedBy    = manager_id
+                      ApprovedBy    = approver_id
                       ApprovedAt    = now ) TO updates.
     ENDLOOP.
 
@@ -568,13 +591,10 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 *--------------------------------------------------------------------*
   METHOD Reject.
 
-    DATA(current_user) = cl_abap_context_info=>get_user_technical_name( ).
-    SELECT SINGLE FROM zits_employee FIELDS employee_id
-      WHERE user_name = @current_user AND role_code = 'M' AND is_active = 'X'
-      INTO @DATA(manager_id).
+    DATA(current_user) = to_upper( cl_abap_context_info=>get_user_technical_name( ) ).
 
     READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
-      ENTITY SalesOrder FIELDS ( OverallStatus )
+      ENTITY SalesOrder FIELDS ( OverallStatus BranchID ApprovalLevel )
       WITH CORRESPONDING #( keys )
       RESULT DATA(orders).
 
@@ -585,12 +605,19 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
-      IF manager_id IS INITIAL.
+      IF zcl_its_approval=>can_approve(
+           iv_user           = current_user
+           iv_branch_id      = order-BranchID
+           iv_required_level = order-ApprovalLevel ) = abap_false.
+
         APPEND VALUE #( %tky = order-%tky ) TO failed-salesorder.
         APPEND VALUE #( %tky = order-%tky
                         %msg = new_message_with_text(
                                  severity = if_abap_behv_message=>severity-error
-                                 text     = 'Only the manager can reject orders' )
+                                 text     = COND #(
+                                   WHEN order-ApprovalLevel = 2
+                                   THEN 'This order requires regional manager approval'
+                                   ELSE 'You may only approve orders for your own branch' ) )
                       ) TO reported-salesorder.
         CONTINUE.
       ENDIF.

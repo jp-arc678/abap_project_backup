@@ -67,12 +67,22 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
 
   METHOD get_instance_features.
     READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
-      ENTITY PurchaseOrder FIELDS ( OverallStatus ) WITH CORRESPONDING #( keys ) RESULT DATA(orders).
+      ENTITY PurchaseOrder FIELDS ( OverallStatus BranchID ApprovalLevel ) WITH CORRESPONDING #( keys ) RESULT DATA(orders).
+
+    DATA(current_user) = to_upper( cl_abap_context_info=>get_user_technical_name( ) ).
+
     result = VALUE #( FOR order IN orders
+      LET may_approve = COND abap_bool( WHEN order-OverallStatus = 'P'
+                                         THEN zcl_its_approval=>can_approve(
+                                                iv_user           = current_user
+                                                iv_branch_id      = order-BranchID
+                                                iv_required_level = order-ApprovalLevel )
+                                         ELSE abap_false )
+      IN
       ( %tky = order-%tky
         %action-Submit  = COND #( WHEN order-OverallStatus = 'D' THEN if_abap_behv=>fc-o-enabled ELSE if_abap_behv=>fc-o-disabled )
-        %action-Approve = COND #( WHEN order-OverallStatus = 'P' THEN if_abap_behv=>fc-o-enabled ELSE if_abap_behv=>fc-o-disabled )
-        %action-Reject  = COND #( WHEN order-OverallStatus = 'P' THEN if_abap_behv=>fc-o-enabled ELSE if_abap_behv=>fc-o-disabled )
+        %action-Approve = COND #( WHEN may_approve = abap_true THEN if_abap_behv=>fc-o-enabled ELSE if_abap_behv=>fc-o-disabled )
+        %action-Reject  = COND #( WHEN may_approve = abap_true THEN if_abap_behv=>fc-o-enabled ELSE if_abap_behv=>fc-o-disabled )
         %action-Cancel  = COND #( WHEN order-OverallStatus = 'D' THEN if_abap_behv=>fc-o-enabled ELSE if_abap_behv=>fc-o-disabled )
         %action-Receive = COND #( WHEN order-OverallStatus = 'A' THEN if_abap_behv=>fc-o-enabled ELSE if_abap_behv=>fc-o-disabled )
       ) ).
@@ -82,24 +92,37 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
   ENDMETHOD.
 
   METHOD Approve.
-    DATA(current_user) = cl_abap_context_info=>get_user_technical_name( ).
-    SELECT SINGLE FROM zits_employee FIELDS employee_id
-      WHERE user_name = @current_user AND role_code = 'M' AND is_active = 'X'
-      INTO @DATA(manager_id).
+    DATA(current_user) = to_upper( cl_abap_context_info=>get_user_technical_name( ) ).
+
     READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
-      ENTITY PurchaseOrder FIELDS ( OverallStatus ) WITH CORRESPONDING #( keys ) RESULT DATA(orders).
+      ENTITY PurchaseOrder FIELDS ( OverallStatus BranchID ApprovalLevel ) WITH CORRESPONDING #( keys ) RESULT DATA(orders).
     DATA updates TYPE TABLE FOR UPDATE zi_its_purchaseorder.
     GET TIME STAMP FIELD DATA(now).
     LOOP AT orders INTO DATA(order).
       IF order-OverallStatus <> 'P'. CONTINUE. ENDIF.
-      IF manager_id IS INITIAL.
+
+      IF zcl_its_approval=>can_approve(
+           iv_user           = current_user
+           iv_branch_id      = order-BranchID
+           iv_required_level = order-ApprovalLevel ) = abap_false.
+
         APPEND VALUE #( %tky = order-%tky ) TO failed-purchaseorder.
         APPEND VALUE #( %tky = order-%tky %msg = new_message_with_text(
           severity = if_abap_behv_message=>severity-error
-          text = 'Only the manager can approve purchase orders' ) ) TO reported-purchaseorder.
+          text = COND #( WHEN order-ApprovalLevel = 2
+                         THEN 'This purchase order requires regional manager approval'
+                         ELSE 'You may only approve purchase orders for your own branch' ) )
+                      ) TO reported-purchaseorder.
         CONTINUE.
       ENDIF.
-      APPEND VALUE #( %tky = order-%tky OverallStatus = 'A' ApprovedBy = manager_id ApprovedAt = now ) TO updates.
+
+      SELECT SINGLE FROM zits_employee
+        FIELDS employee_id
+        WHERE upper( user_name ) = @current_user
+          AND is_active = 'X'
+        INTO @DATA(approver_id).
+
+      APPEND VALUE #( %tky = order-%tky OverallStatus = 'A' ApprovedBy = approver_id ApprovedAt = now ) TO updates.
     ENDLOOP.
     MODIFY ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
       ENTITY PurchaseOrder UPDATE FIELDS ( OverallStatus ApprovedBy ApprovedAt ) WITH updates REPORTED DATA(rep).
@@ -203,15 +226,17 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
 
   METHOD Submit.
     READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
-      ENTITY PurchaseOrder FIELDS ( OverallStatus )
+      ENTITY PurchaseOrder FIELDS ( OverallStatus TotalCost )
       WITH CORRESPONDING #( keys ) RESULT DATA(orders).
     DATA updates TYPE TABLE FOR UPDATE zi_its_purchaseorder.
     LOOP AT orders INTO DATA(order).
       IF order-OverallStatus <> 'D'. CONTINUE. ENDIF.
-      APPEND VALUE #( %tky = order-%tky OverallStatus = 'P' ) TO updates.
+      "--- purchase orders always need approval - no level 0 ---
+      DATA(required_level) = zcl_its_approval=>get_required_level_po( order-TotalCost ).
+      APPEND VALUE #( %tky = order-%tky OverallStatus = 'P' ApprovalLevel = required_level ) TO updates.
     ENDLOOP.
     MODIFY ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
-      ENTITY PurchaseOrder UPDATE FIELDS ( OverallStatus ) WITH updates REPORTED DATA(rep).
+      ENTITY PurchaseOrder UPDATE FIELDS ( OverallStatus ApprovalLevel ) WITH updates REPORTED DATA(rep).
     READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
       ENTITY PurchaseOrder ALL FIELDS WITH CORRESPONDING #( keys ) RESULT DATA(final).
     result = VALUE #( FOR o IN final ( %tky = o-%tky %param = o ) ).
@@ -435,13 +460,10 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
 
   METHOD Reject.
 
-    DATA(current_user) = cl_abap_context_info=>get_user_technical_name( ).
-    SELECT SINGLE FROM zits_employee FIELDS employee_id
-      WHERE user_name = @current_user AND role_code = 'M' AND is_active = 'X'
-      INTO @DATA(manager_id).
+    DATA(current_user) = to_upper( cl_abap_context_info=>get_user_technical_name( ) ).
 
     READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
-      ENTITY purchaseOrder FIELDS ( OverallStatus )
+      ENTITY purchaseOrder FIELDS ( OverallStatus BranchID ApprovalLevel )
       WITH CORRESPONDING #( keys )
       RESULT DATA(orders).
 
@@ -452,12 +474,19 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
-      IF manager_id IS INITIAL.
+      IF zcl_its_approval=>can_approve(
+           iv_user           = current_user
+           iv_branch_id      = order-BranchID
+           iv_required_level = order-ApprovalLevel ) = abap_false.
+
         APPEND VALUE #( %tky = order-%tky ) TO failed-purchaseorder.
         APPEND VALUE #( %tky = order-%tky
                         %msg = new_message_with_text(
                                  severity = if_abap_behv_message=>severity-error
-                                 text     = 'Only the manager can reject orders' )
+                                 text     = COND #(
+                                   WHEN order-ApprovalLevel = 2
+                                   THEN 'This purchase order requires regional manager approval'
+                                   ELSE 'You may only approve purchase orders for your own branch' ) )
                       ) TO reported-purchaseorder.
         CONTINUE.
       ENDIF.

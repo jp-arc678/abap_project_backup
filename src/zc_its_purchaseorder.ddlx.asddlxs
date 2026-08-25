@@ -56,6 +56,9 @@ annotate view ZC_ITS_PURCHASEORDER with
          identification: [ { position: 50 } ], selectionField: [ { position: 50 } ] }
   OverallStatus;
 
+  @UI: { identification: [ { position: 55 } ] }
+  ApprovalLevel;
+
   @UI: { identification: [ { position: 60 } ] }
   OrderDate;
   @UI: { identification: [ { position: 70 } ] }

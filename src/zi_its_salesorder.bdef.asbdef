@@ -15,7 +15,7 @@ authorization master ( global )
   association _Item { create; }
 
   field ( readonly, numbering : managed ) SOUUID;
-  field ( readonly ) SONumber, OrderType, OverallStatus, TotalAmount,
+  field ( readonly ) SONumber, OrderType, OverallStatus, ApprovalLevel, TotalAmount,
                      ApprovedBy, ApprovedAt, SalespersonID,
                      CreatedBy, CreatedAt, LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
   field ( mandatory ) BranchID;
@@ -52,6 +52,7 @@ authorization master ( global )
     BranchID           = branch_id;
     OrderType          = order_type;
     OverallStatus      = overall_status;
+    ApprovalLevel      = approval_level;
     SalespersonID      = salesperson_id;
     SalesDate          = sales_date;
     TotalAmount        = total_amount;

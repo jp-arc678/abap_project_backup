@@ -17,6 +17,13 @@ define root view entity ZC_ITS_EMPLOYEE
 
       _Branch.BranchName as BranchName,
 
+      @ObjectModel.text.element: [ 'RegionName' ]
+      @Consumption.valueHelpDefinition: [ { entity: { name: 'ZI_ITS_VH_REGION', element: 'RegionID' },
+                                            useForValidation: true } ]
+      RegionID,
+
+      _Region.RegionName as RegionName,
+
       RoleCode,
       RoleName,
 

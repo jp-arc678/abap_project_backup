@@ -21,7 +21,9 @@ define root view entity ZI_ITS_SALESORDER
 
       @EndUserText.label: 'Status'
       overall_status        as OverallStatus,
-      
+
+      @EndUserText.label: 'Approval Level'
+      approval_level        as ApprovalLevel,
 
       @EndUserText.label: 'Salesperson'
       salesperson_id        as SalespersonID,

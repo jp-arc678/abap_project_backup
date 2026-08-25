@@ -35,6 +35,15 @@ annotate view ZC_ITS_EMPLOYEE with
   @UI.hidden: true
   BranchName;
 
+  @UI: { lineItem:       [ { position: 32, importance: #HIGH } ],
+         identification: [ { position: 32 } ],
+         selectionField: [ { position: 32 } ],
+         textArrangement: #TEXT_FIRST }
+  RegionID;
+
+  @UI.hidden: true
+  RegionName;
+
   @UI: { lineItem:       [ { position: 35, importance: #HIGH } ],
          identification: [ { position: 35 } ],
          selectionField: [ { position: 35 } ],

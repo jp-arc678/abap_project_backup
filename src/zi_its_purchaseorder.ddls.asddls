@@ -18,6 +18,8 @@ define root view entity ZI_ITS_PURCHASEORDER
       supplier_id           as SupplierID,
       @EndUserText.label: 'Status'
       overall_status        as OverallStatus,
+      @EndUserText.label: 'Approval Level'
+      approval_level        as ApprovalLevel,
       @EndUserText.label: 'Warehouse Staff'
       warehouse_staff_id    as WarehouseStaffID,
       @EndUserText.label: 'Order Date'
