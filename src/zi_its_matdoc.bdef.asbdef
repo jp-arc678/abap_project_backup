@@ -1,0 +1,14 @@
+managed implementation in class zbp_i_its_matdoc unique;
+strict ( 2 );
+
+define behavior for ZI_ITS_MATDOC //alias <alias_name>
+persistent table zits_matdoc
+lock master
+authorization master ( instance )
+//etag master <field_name>
+{
+  create ( authorization : global );
+  update;
+  delete;
+  field ( readonly ) MatdocUuid;
+}

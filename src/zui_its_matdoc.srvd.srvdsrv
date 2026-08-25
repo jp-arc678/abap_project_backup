@@ -1,0 +1,4 @@
+@EndUserText.label: 'service def for matdoc'
+define service ZUI_ITS_MATDOC {
+  expose ZC_ITS_MATDOC as MaterialDocument;
+}
