@@ -223,40 +223,59 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
 
 
   METHOD Receive.
+
+    TYPES: BEGIN OF ty_pending_receipt,
+             cid        TYPE string,
+             branch_id  TYPE zits_stock-branch_id,
+             product_id TYPE zits_stock-product_id,
+             quantity   TYPE zits_poitem-quantity,
+           END OF ty_pending_receipt.
+
     READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
-      ENTITY PurchaseOrder FIELDS ( OverallStatus PONumber CurrencyCode TotalCost BranchID )
+      ENTITY PurchaseOrder FIELDS ( OverallStatus POUUID PONumber CurrencyCode TotalCost BranchID )
       WITH CORRESPONDING #( keys ) RESULT DATA(orders).
-    DATA header_updates TYPE TABLE FOR UPDATE zi_its_purchaseorder.
-    DATA stock_updates  TYPE TABLE FOR UPDATE zi_its_stock.
-    DATA stock_creates  TYPE TABLE FOR CREATE zi_its_stock.
-    DATA ledger_creates TYPE TABLE FOR CREATE zi_its_ledger.
+
+    DATA header_updates  TYPE TABLE FOR UPDATE zi_its_purchaseorder.
+    DATA stock_updates   TYPE TABLE FOR UPDATE zi_its_stock.
+    DATA stock_creates   TYPE TABLE FOR CREATE zi_its_stock.
+    DATA ledger_creates  TYPE TABLE FOR CREATE zi_its_ledger.
+    DATA matdoc_creates  TYPE TABLE FOR CREATE zi_its_matdoc.
+    DATA pending_receipts TYPE STANDARD TABLE OF ty_pending_receipt WITH EMPTY KEY.
+
     GET TIME STAMP FIELD DATA(now).
     DATA(today) = cl_abap_context_info=>get_system_date( ).
+
     LOOP AT orders INTO DATA(order).
       IF order-OverallStatus <> 'A'. CONTINUE. ENDIF.
+
       READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
-        ENTITY PurchaseOrder BY \_Item FIELDS ( ProductID Quantity )
+        ENTITY PurchaseOrder BY \_Item FIELDS ( ProductID Quantity Unit ItemPos )
         WITH VALUE #( ( %tky = order-%tky ) ) RESULT DATA(items).
+
+      "--- เตรียม material document (goods receipt) ของแต่ละสินค้า - ยังไม่แตะสต๊อก ---
       LOOP AT items INTO DATA(item).
         IF item-ProductID IS INITIAL. CONTINUE. ENDIF.
 
-        "--- goods receipt: update stock if a row exists for this branch+product, else create it ---
-        SELECT SINGLE FROM zits_stock FIELDS qty_on_hand
-          WHERE branch_id  = @order-BranchID
-            AND product_id = @item-ProductID
-          INTO @DATA(current_stock).
+        DATA(cid) = |MD_{ order-PONumber }_{ item-ItemPos }|.
 
-        IF sy-subrc = 0.
-          APPEND VALUE #( %key-BranchID  = order-BranchID
-                          %key-ProductID = item-ProductID
-                          QtyOnHand      = current_stock + item-Quantity ) TO stock_updates.
-        ELSE.
-          APPEND VALUE #( %cid      = |STK_{ order-PONumber }_{ item-ProductID }|
-                          BranchID  = order-BranchID
-                          ProductID = item-ProductID
-                          QtyOnHand = item-Quantity ) TO stock_creates.
-        ENDIF.
+        APPEND VALUE #( %cid         = cid
+                        MovementType = zcl_its_movement=>gc_goods_receipt
+                        PostingDate  = today
+                        BranchID     = order-BranchID
+                        ProductID    = item-ProductID
+                        Quantity     = item-Quantity   "goods arriving - positive
+                        Unit         = item-Unit
+                        RefDocType   = 'PO'
+                        RefDocNumber = order-PONumber
+                        RefDocUUID   = order-POUUID
+                        RefItemPos   = item-ItemPos ) TO matdoc_creates.
+
+        APPEND VALUE #( cid        = cid
+                        branch_id  = order-BranchID
+                        product_id = item-ProductID
+                        quantity   = item-Quantity ) TO pending_receipts.
       ENDLOOP.
+
       APPEND VALUE #( %cid = |LED_{ order-PONumber }|
                       PostingDate = today  EntryType = 'E'  "Expense!
                       Amount = order-TotalCost  CurrencyCode = order-CurrencyCode
@@ -264,6 +283,50 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
                       Description = |Restock { order-PONumber }| ) TO ledger_creates.
       APPEND VALUE #( %tky = order-%tky OverallStatus = 'R' ReceivedDate = today ) TO header_updates.
     ENDLOOP.
+
+    "--- สร้าง material document ก่อน (ไม่ใช้ LOCAL MODE - ข้าม BO) ---
+    DATA failed_cids TYPE STANDARD TABLE OF string WITH EMPTY KEY.
+
+    IF matdoc_creates IS NOT INITIAL.
+      MODIFY ENTITIES OF zi_its_matdoc
+        ENTITY MaterialDocument
+          CREATE FIELDS ( MovementType PostingDate BranchID ProductID Quantity Unit
+                          RefDocType RefDocNumber RefDocUUID RefItemPos )
+          WITH matdoc_creates
+        REPORTED DATA(matdoc_rep)
+        FAILED   DATA(matdoc_failed).
+
+      LOOP AT matdoc_failed-materialdocument INTO DATA(mf).
+        APPEND mf-%cid TO failed_cids.
+      ENDLOOP.
+    ENDIF.
+
+    "--- ตัดสต๊อกเฉพาะรายการที่มี material document สำเร็จแล้วเท่านั้น ---
+    "    goods receipt: update stock if a row exists for this branch+product, else create it
+    LOOP AT pending_receipts INTO DATA(pending).
+
+      READ TABLE failed_cids WITH KEY table_line = pending-cid TRANSPORTING NO FIELDS.
+      IF sy-subrc = 0.
+        CONTINUE.
+      ENDIF.
+
+      SELECT SINGLE FROM zits_stock FIELDS qty_on_hand
+        WHERE branch_id  = @pending-branch_id
+          AND product_id = @pending-product_id
+        INTO @DATA(current_stock).
+
+      IF sy-subrc = 0.
+        APPEND VALUE #( %key-BranchID  = pending-branch_id
+                        %key-ProductID = pending-product_id
+                        QtyOnHand      = current_stock + pending-quantity ) TO stock_updates.
+      ELSE.
+        APPEND VALUE #( %cid      = |STK_{ pending-cid }|
+                        BranchID  = pending-branch_id
+                        ProductID = pending-product_id
+                        QtyOnHand = pending-quantity ) TO stock_creates.
+      ENDIF.
+    ENDLOOP.
+
     IF stock_updates IS NOT INITIAL.
       MODIFY ENTITIES OF zi_its_stock ENTITY Stock
         UPDATE FIELDS ( QtyOnHand ) WITH stock_updates REPORTED DATA(stock_upd_rep) FAILED DATA(stock_upd_failed).

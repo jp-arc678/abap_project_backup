@@ -1,14 +1,90 @@
 @Metadata.layer: #CORE
-annotate view ZC_ITS_MATDOC
-    with 
-{ 
 
-    @UI.facet: [ { id: 'General',
+@UI: {
+  headerInfo: {
+    typeName: 'Material Document',
+    typeNamePlural: 'Material Documents',
+    title:       { type: #STANDARD, value: 'MatDocNumber' },
+    description: { type: #STANDARD, value: 'MovementTypeText' }
+  }
+}
+
+@UI.presentationVariant: [ { sortOrder: [ { by: 'PostingDate', direction: #DESC } ] } ]
+
+annotate view ZC_ITS_MATDOC with
+{
+  @UI.facet: [ { id: 'General',
                  purpose: #STANDARD,
                  type: #IDENTIFICATION_REFERENCE,
-                 label: 'place holder Details',
+                 label: 'Material Document Details',
                  position: 10 } ]
-    
-    placeholderid;
-    
+
+  @UI.hidden: true
+  MatDocUUID;
+
+  @UI: { lineItem:       [ { position: 10, importance: #HIGH } ],
+         identification: [ { position: 10 } ] }
+  MatDocNumber;
+
+  @UI: { lineItem:       [ { position: 20, importance: #HIGH } ],
+         identification: [ { position: 20 } ],
+         selectionField: [ { position: 40 } ] }
+  PostingDate;
+
+  @UI: { lineItem:       [ { position: 30, importance: #HIGH } ],
+         identification: [ { position: 30 } ],
+         selectionField: [ { position: 30 } ],
+         textArrangement: #TEXT_FIRST }
+  MovementType;
+
+  @UI.hidden: true
+  MovementTypeText;
+
+  @UI: { lineItem:       [ { position: 40, importance: #HIGH } ],
+         identification: [ { position: 40 } ],
+         selectionField: [ { position: 10 } ],
+         textArrangement: #TEXT_FIRST }
+  BranchID;
+
+  @UI.hidden: true
+  BranchName;
+
+  @UI: { lineItem:       [ { position: 50, importance: #HIGH } ],
+         identification: [ { position: 50 } ],
+         selectionField: [ { position: 20 } ],
+         textArrangement: #TEXT_FIRST }
+  ProductID;
+
+  @UI.hidden: true
+  ProductName;
+
+  @UI: { lineItem:       [ { position: 60, importance: #HIGH, criticality: 'QuantityCriticality' } ],
+         identification: [ { position: 60 } ] }
+  Quantity;
+
+  @UI.hidden: true
+  QuantityCriticality;
+
+  @UI: { lineItem:       [ { position: 70, importance: #MEDIUM } ],
+         identification: [ { position: 70 } ] }
+  Unit;
+
+  @UI: { lineItem:       [ { position: 80, importance: #MEDIUM } ],
+         identification: [ { position: 80 } ] }
+  RefDocType;
+
+  @UI: { lineItem:       [ { position: 90, importance: #MEDIUM } ],
+         identification: [ { position: 90 } ] }
+  RefDocNumber;
+
+  @UI.hidden: true
+  RefDocUUID;
+
+  @UI: { identification: [ { position: 100 } ] }
+  RefItemPos;
+
+  @UI.hidden: true
+  CreatedBy;
+  @UI.hidden: true
+  CreatedAt;
 }

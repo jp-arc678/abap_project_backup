@@ -1,14 +1,35 @@
 managed implementation in class zbp_i_its_matdoc unique;
 strict ( 2 );
 
-define behavior for ZI_ITS_MATDOC //alias <alias_name>
+define behavior for ZI_ITS_MATDOC alias MaterialDocument
 persistent table zits_matdoc
 lock master
-authorization master ( instance )
-//etag master <field_name>
+authorization master ( global )
 {
-  create ( authorization : global );
-  update;
-  delete;
-  field ( readonly ) MatdocUuid;
+  create;
+  // no update, no delete - append only, corrections are reversing movements
+
+  field ( readonly, numbering : managed ) MatDocUUID;
+  field ( readonly ) MatDocNumber, MovementTypeText, QuantityCriticality,
+                     CreatedBy, CreatedAt;
+
+  determination assignMatDocNumber on save { create; }
+
+  mapping for zits_matdoc
+  {
+    MatDocUUID     = matdoc_uuid;
+    MatDocNumber   = matdoc_number;
+    PostingDate    = posting_date;
+    MovementType   = movement_type;
+    BranchID       = branch_id;
+    ProductID      = product_id;
+    Quantity       = quantity;
+    Unit           = unit;
+    RefDocType     = ref_doc_type;
+    RefDocNumber   = ref_doc_number;
+    RefDocUUID     = ref_doc_uuid;
+    RefItemPos     = ref_item_pos;
+    CreatedBy      = created_by;
+    CreatedAt      = created_at;
+  }
 }

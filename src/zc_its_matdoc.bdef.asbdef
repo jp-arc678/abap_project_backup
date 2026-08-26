@@ -1,9 +1,8 @@
 projection;
 strict ( 2 );
 
-define behavior for ZC_ITS_MATDOC //alias <alias_name>
+define behavior for ZC_ITS_MATDOC alias MaterialDocument
 {
-  use create;
-  use update;
-  use delete;
+  // deliberately empty - material documents are never created,
+  // changed or deleted through the UI
 }
