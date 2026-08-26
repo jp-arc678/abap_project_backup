@@ -7,7 +7,7 @@ lock master
 authorization master ( global )
 {
   create;
-  // no update, no delete - append only, corrections are reversing movements
+  update;
 
   field ( readonly, numbering : managed ) MatDocUUID;
   field ( readonly ) MatDocNumber, MovementTypeText, QuantityCriticality,

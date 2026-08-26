@@ -3,7 +3,9 @@
 {
 "FROM":
 [
-"ZI_ITS_MATDOC"
+"ZI_ITS_BRANCH",
+"ZI_ITS_MATDOC",
+"ZI_ITS_PRODUCT"
 ],
 "ASSOCIATED":
 [],
