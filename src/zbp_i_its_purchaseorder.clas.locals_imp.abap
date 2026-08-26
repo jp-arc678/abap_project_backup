@@ -226,6 +226,7 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
 
     TYPES: BEGIN OF ty_pending_receipt,
              cid        TYPE string,
+             po_uuid    TYPE zits_po-po_uuid,
              branch_id  TYPE zits_stock-branch_id,
              product_id TYPE zits_stock-product_id,
              quantity   TYPE zits_poitem-quantity,
@@ -235,28 +236,32 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
       ENTITY PurchaseOrder FIELDS ( OverallStatus POUUID PONumber CurrencyCode TotalCost BranchID )
       WITH CORRESPONDING #( keys ) RESULT DATA(orders).
 
-    DATA header_updates  TYPE TABLE FOR UPDATE zi_its_purchaseorder.
-    DATA stock_updates   TYPE TABLE FOR UPDATE zi_its_stock.
-    DATA stock_creates   TYPE TABLE FOR CREATE zi_its_stock.
-    DATA ledger_creates  TYPE TABLE FOR CREATE zi_its_ledger.
-    DATA matdoc_creates  TYPE TABLE FOR CREATE zi_its_matdoc.
+    DATA header_updates   TYPE TABLE FOR UPDATE zi_its_purchaseorder.
+    DATA stock_updates    TYPE TABLE FOR UPDATE zi_its_stock.
+    DATA stock_creates    TYPE TABLE FOR CREATE zi_its_stock.
+    DATA ledger_creates   TYPE TABLE FOR CREATE zi_its_ledger.
+    DATA matdoc_creates   TYPE TABLE FOR CREATE zi_its_matdoc.
     DATA pending_receipts TYPE STANDARD TABLE OF ty_pending_receipt WITH EMPTY KEY.
+    DATA failed_cids      TYPE STANDARD TABLE OF string WITH EMPTY KEY.
+    DATA failed_orders    TYPE STANDARD TABLE OF zits_po-po_uuid WITH EMPTY KEY.
 
     GET TIME STAMP FIELD DATA(now).
     DATA(today) = cl_abap_context_info=>get_system_date( ).
 
+    "--- เตรียม material document (goods receipt) ของทุกรายการก่อน - ยังไม่แตะสต๊อกหรือเปลี่ยนสถานะ ---
     LOOP AT orders INTO DATA(order).
       IF order-OverallStatus <> 'A'. CONTINUE. ENDIF.
 
       READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
-        ENTITY PurchaseOrder BY \_Item FIELDS ( ProductID Quantity Unit ItemPos )
+        ENTITY PurchaseOrder BY \_Item FIELDS ( ProductID Quantity Unit )
         WITH VALUE #( ( %tky = order-%tky ) ) RESULT DATA(items).
 
-      "--- เตรียม material document (goods receipt) ของแต่ละสินค้า - ยังไม่แตะสต๊อก ---
-      LOOP AT items INTO DATA(item).
+      "--- ใช้ลำดับใน loop เป็นตัวการันตี %cid ไม่ซ้ำ (ItemPos ของ item ไม่เคยถูกเซ็ตค่าจริง ยังเป็นค่าว่างเสมอ
+      "    ถ้าใช้ ItemPos ตอน item มากกว่า 1 รายการจะได้ %cid ซ้ำกัน แล้ว EML create จะ dump) ---
+      LOOP AT items INTO DATA(item) INDEX INTO DATA(item_seq).
         IF item-ProductID IS INITIAL. CONTINUE. ENDIF.
 
-        DATA(cid) = |MD_{ order-PONumber }_{ item-ItemPos }|.
+        DATA(cid) = |MD_{ order-PONumber }_{ item_seq }|.
 
         APPEND VALUE #( %cid         = cid
                         MovementType = zcl_its_movement=>gc_goods_receipt
@@ -268,26 +273,19 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
                         RefDocType   = 'PO'
                         RefDocNumber = order-PONumber
                         RefDocUUID   = order-POUUID
-                        RefItemPos   = item-ItemPos ) TO matdoc_creates.
+                        RefItemPos   = item_seq ) TO matdoc_creates.
 
         APPEND VALUE #( cid        = cid
+                        po_uuid    = order-POUUID
                         branch_id  = order-BranchID
                         product_id = item-ProductID
                         quantity   = item-Quantity ) TO pending_receipts.
       ENDLOOP.
-
-      APPEND VALUE #( %cid = |LED_{ order-PONumber }|
-                      PostingDate = today  EntryType = 'E'  "Expense!
-                      Amount = order-TotalCost  CurrencyCode = order-CurrencyCode
-                      RefDocType = 'PO'  RefDocNumber = order-PONumber
-                      Description = |Restock { order-PONumber }| ) TO ledger_creates.
-      APPEND VALUE #( %tky = order-%tky OverallStatus = 'R' ReceivedDate = today ) TO header_updates.
     ENDLOOP.
 
     "--- สร้าง material document ก่อน (ไม่ใช้ LOCAL MODE - ข้าม BO) ---
-    DATA failed_cids TYPE STANDARD TABLE OF string WITH EMPTY KEY.
-
     IF matdoc_creates IS NOT INITIAL.
+
       MODIFY ENTITIES OF zi_its_matdoc
         ENTITY MaterialDocument
           CREATE FIELDS ( MovementType PostingDate BranchID ProductID Quantity Unit
@@ -299,13 +297,25 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
       LOOP AT matdoc_failed-materialdocument INTO DATA(mf).
         APPEND mf-%cid TO failed_cids.
       ENDLOOP.
+
+      "--- ถ้ารายการไหนของใบไหนสร้าง material document ไม่สำเร็จ ---
+      "    ให้ข้ามทั้งใบนั้น - ไม่ตัดสต๊อกและไม่เปลี่ยนสถานะแม้แต่รายการเดียวของใบนั้น
+      LOOP AT pending_receipts INTO DATA(chk).
+        READ TABLE failed_cids WITH KEY table_line = chk-cid TRANSPORTING NO FIELDS.
+        IF sy-subrc = 0.
+          APPEND chk-po_uuid TO failed_orders.
+        ENDIF.
+      ENDLOOP.
+      SORT failed_orders.
+      DELETE ADJACENT DUPLICATES FROM failed_orders.
+
     ENDIF.
 
-    "--- ตัดสต๊อกเฉพาะรายการที่มี material document สำเร็จแล้วเท่านั้น ---
+    "--- ตัดสต๊อกเฉพาะรายการของใบที่ไม่ได้อยู่ใน failed_orders ---
     "    goods receipt: update stock if a row exists for this branch+product, else create it
     LOOP AT pending_receipts INTO DATA(pending).
 
-      READ TABLE failed_cids WITH KEY table_line = pending-cid TRANSPORTING NO FIELDS.
+      READ TABLE failed_orders WITH KEY table_line = pending-po_uuid TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
         CONTINUE.
       ENDIF.
@@ -325,6 +335,30 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
                         ProductID = pending-product_id
                         QtyOnHand = pending-quantity ) TO stock_creates.
       ENDIF.
+    ENDLOOP.
+
+    "--- เตรียม ledger + เปลี่ยนสถานะ เฉพาะใบที่ไม่ได้อยู่ใน failed_orders ---
+    "    ใบที่อยู่ใน failed_orders จะรายงาน error กลับไปแทน ให้ผู้ใช้ลองใหม่
+    LOOP AT orders INTO order.
+      IF order-OverallStatus <> 'A'. CONTINUE. ENDIF.
+
+      READ TABLE failed_orders WITH KEY table_line = order-POUUID TRANSPORTING NO FIELDS.
+      IF sy-subrc = 0.
+        APPEND VALUE #( %tky = order-%tky ) TO failed-purchaseorder.
+        APPEND VALUE #( %tky = order-%tky
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = |Material document creation failed for { order-PONumber } - order not received, please retry| )
+                      ) TO reported-purchaseorder.
+        CONTINUE.
+      ENDIF.
+
+      APPEND VALUE #( %cid = |LED_{ order-PONumber }|
+                      PostingDate = today  EntryType = 'E'  "Expense!
+                      Amount = order-TotalCost  CurrencyCode = order-CurrencyCode
+                      RefDocType = 'PO'  RefDocNumber = order-PONumber
+                      Description = |Restock { order-PONumber }| ) TO ledger_creates.
+      APPEND VALUE #( %tky = order-%tky OverallStatus = 'R' ReceivedDate = today ) TO header_updates.
     ENDLOOP.
 
     IF stock_updates IS NOT INITIAL.

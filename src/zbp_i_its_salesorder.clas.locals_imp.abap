@@ -779,6 +779,7 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 
     TYPES: BEGIN OF ty_pending_issue,
              cid        TYPE string,
+             so_uuid    TYPE zits_so-so_uuid,
              branch_id  TYPE zits_stock-branch_id,
              product_id TYPE zits_stock-product_id,
              quantity   TYPE zits_soitem-quantity,
@@ -796,31 +797,33 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
     DATA ledger_creates TYPE TABLE FOR CREATE zi_its_ledger.
     DATA matdoc_creates TYPE TABLE FOR CREATE zi_its_matdoc.
     DATA pending_issues TYPE STANDARD TABLE OF ty_pending_issue WITH EMPTY KEY.
+    DATA failed_cids    TYPE STANDARD TABLE OF string WITH EMPTY KEY.
+    DATA failed_orders  TYPE STANDARD TABLE OF zits_so-so_uuid WITH EMPTY KEY.
 
     GET TIME STAMP FIELD DATA(now).
     DATA(today) = cl_abap_context_info=>get_system_date( ).
 
+    "==== 2) เตรียม material document ของทุกรายการก่อน - ยังไม่แตะสต๊อกหรือเปลี่ยนสถานะ ====
     LOOP AT orders INTO DATA(order).
 
       IF order-OverallStatus <> 'C'.
         CONTINUE.
       ENDIF.
 
-      "==== 2) อ่าน item ทั้งหมดของใบนี้ ====
       READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
         ENTITY SalesOrder BY \_Item
-          FIELDS ( ProductID Quantity Unit ItemPos )
+          FIELDS ( ProductID Quantity Unit )
           WITH VALUE #( ( %tky = order-%tky ) )
         RESULT DATA(items).
 
-      "==== 3) เตรียม material document (goods issue) ของแต่ละสินค้าในใบนี้ ====
-      "        เตรียมไว้ก่อน ยังไม่ตัดสต๊อก - ต้องมีเอกสารก่อนถึงจะแก้สต๊อกได้
-      LOOP AT items INTO DATA(item).
+      "--- ใช้ลำดับใน loop เป็นตัวการันตี %cid ไม่ซ้ำ (ItemPos ของ item ไม่เคยถูกเซ็ตค่าจริง ยังเป็นค่าว่างเสมอ
+      "    ถ้าใช้ ItemPos ตอน item มากกว่า 1 รายการจะได้ %cid ซ้ำกัน แล้ว EML create จะ dump) ---
+      LOOP AT items INTO DATA(item) INDEX INTO DATA(item_seq).
         IF item-ProductID IS INITIAL.
           CONTINUE.
         ENDIF.
 
-        DATA(cid) = |MD_{ order-SONumber }_{ item-ItemPos }|.
+        DATA(cid) = |MD_{ order-SONumber }_{ item_seq }|.
 
         APPEND VALUE #( %cid         = cid
                         MovementType = zcl_its_movement=>gc_goods_issue
@@ -832,37 +835,22 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
                         RefDocType   = 'SO'
                         RefDocNumber = order-SONumber
                         RefDocUUID   = order-SOUUID
-                        RefItemPos   = item-ItemPos )
+                        RefItemPos   = item_seq )
                TO matdoc_creates.
 
         APPEND VALUE #( cid        = cid
+                        so_uuid    = order-SOUUID
                         branch_id  = order-BranchID
                         product_id = item-ProductID
                         quantity   = item-Quantity )
                TO pending_issues.
       ENDLOOP.
 
-      "==== 4) เตรียม ledger entry (income) ของใบนี้ ====
-      APPEND VALUE #( %cid         = |LED_{ order-SONumber }|
-                      PostingDate  = today
-                      EntryType    = 'I'
-                      Amount       = order-TotalAmount
-                      CurrencyCode = order-CurrencyCode
-                      RefDocType   = 'SO'
-                      RefDocNumber = order-SONumber
-                      Description  = |Sale { order-SONumber }| )
-             TO ledger_creates.
-
-      "==== 5) เปลี่ยนสถานะเป็น Completed ====
-      APPEND VALUE #( %tky          = order-%tky
-                      OverallStatus = 'F' ) TO header_updates.
-
     ENDLOOP.
 
-    "==== 6) สร้าง material document ก่อน (ไม่ใช้ LOCAL MODE - ข้าม BO) ====
-    DATA failed_cids TYPE STANDARD TABLE OF string WITH EMPTY KEY.
-
+    "==== 3) สร้าง material document ก่อน (ไม่ใช้ LOCAL MODE - ข้าม BO) ====
     IF matdoc_creates IS NOT INITIAL.
+
       MODIFY ENTITIES OF zi_its_matdoc
         ENTITY MaterialDocument
           CREATE FIELDS ( MovementType PostingDate BranchID ProductID Quantity Unit
@@ -874,12 +862,24 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
       LOOP AT matdoc_failed-materialdocument INTO DATA(mf).
         APPEND mf-%cid TO failed_cids.
       ENDLOOP.
+
+      "==== 4) ถ้ารายการไหนของใบไหนสร้าง material document ไม่สำเร็จ ====
+      "        ให้ข้ามทั้งใบนั้น - ไม่ตัดสต๊อกและไม่เปลี่ยนสถานะแม้แต่รายการเดียวของใบนั้น
+      LOOP AT pending_issues INTO DATA(chk).
+        READ TABLE failed_cids WITH KEY table_line = chk-cid TRANSPORTING NO FIELDS.
+        IF sy-subrc = 0.
+          APPEND chk-so_uuid TO failed_orders.
+        ENDIF.
+      ENDLOOP.
+      SORT failed_orders.
+      DELETE ADJACENT DUPLICATES FROM failed_orders.
+
     ENDIF.
 
-    "==== 7) ตัดสต๊อกเฉพาะรายการที่มี material document สำเร็จแล้วเท่านั้น ====
+    "==== 5) ตัดสต๊อกเฉพาะรายการของใบที่ไม่ได้อยู่ใน failed_orders ====
     LOOP AT pending_issues INTO DATA(pending).
 
-      READ TABLE failed_cids WITH KEY table_line = pending-cid TRANSPORTING NO FIELDS.
+      READ TABLE failed_orders WITH KEY table_line = pending-so_uuid TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
         CONTINUE.
       ENDIF.
@@ -896,9 +896,43 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
              TO stock_updates.
     ENDLOOP.
 
-    "==== 8) ยิง EML ที่เหลือ ====
+    "==== 6) เตรียม ledger + เปลี่ยนสถานะ เฉพาะใบที่ไม่ได้อยู่ใน failed_orders ====
+    "        ใบที่อยู่ใน failed_orders จะรายงาน error กลับไปแทน ให้ผู้ใช้ลองใหม่
+    LOOP AT orders INTO order.
 
-    " 8a) ตัดสต๊อกที่ Stock BO (ต่อสาขา)
+      IF order-OverallStatus <> 'C'.
+        CONTINUE.
+      ENDIF.
+
+      READ TABLE failed_orders WITH KEY table_line = order-SOUUID TRANSPORTING NO FIELDS.
+      IF sy-subrc = 0.
+        APPEND VALUE #( %tky = order-%tky ) TO failed-salesorder.
+        APPEND VALUE #( %tky = order-%tky
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = |Material document creation failed for { order-SONumber } - order not completed, please retry| )
+                      ) TO reported-salesorder.
+        CONTINUE.
+      ENDIF.
+
+      APPEND VALUE #( %cid         = |LED_{ order-SONumber }|
+                      PostingDate  = today
+                      EntryType    = 'I'
+                      Amount       = order-TotalAmount
+                      CurrencyCode = order-CurrencyCode
+                      RefDocType   = 'SO'
+                      RefDocNumber = order-SONumber
+                      Description  = |Sale { order-SONumber }| )
+             TO ledger_creates.
+
+      APPEND VALUE #( %tky          = order-%tky
+                      OverallStatus = 'F' ) TO header_updates.
+
+    ENDLOOP.
+
+    "==== 7) ยิง EML ที่เหลือ ====
+
+    " 7a) ตัดสต๊อกที่ Stock BO (ต่อสาขา)
     IF stock_updates IS NOT INITIAL.
       MODIFY ENTITIES OF zi_its_stock
         ENTITY Stock
@@ -907,7 +941,7 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
         FAILED   DATA(stock_failed).
     ENDIF.
 
-    " 8b) สร้าง entry ที่ Ledger BO
+    " 7b) สร้าง entry ที่ Ledger BO
     IF ledger_creates IS NOT INITIAL.
       MODIFY ENTITIES OF zi_its_ledger
         ENTITY Ledger
@@ -918,7 +952,7 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
         FAILED   DATA(led_failed).
     ENDIF.
 
-    " 8c) อัปเดตสถานะ header ของตัวเอง (local mode)
+    " 7c) อัปเดตสถานะ header ของตัวเอง (local mode)
     IF header_updates IS NOT INITIAL.
       MODIFY ENTITIES OF zi_its_salesorder IN LOCAL MODE
         ENTITY SalesOrder
@@ -926,7 +960,7 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
         REPORTED DATA(hdr_rep).
     ENDIF.
 
-    "==== 9) คืนค่า instance ให้ UI ====
+    "==== 8) คืนค่า instance ให้ UI ====
     READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
       ENTITY SalesOrder ALL FIELDS WITH CORRESPONDING #( keys ) RESULT DATA(final).
     result = VALUE #( FOR o IN final ( %tky = o-%tky %param = o ) ).
