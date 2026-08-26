@@ -785,6 +785,14 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
              quantity   TYPE zits_soitem-quantity,
            END OF ty_pending_issue.
 
+    TYPES: BEGIN OF ty_cid_line,
+             cid TYPE string,
+           END OF ty_cid_line.
+
+    TYPES: BEGIN OF ty_order_line,
+             so_uuid TYPE zits_so-so_uuid,
+           END OF ty_order_line.
+
     "==== 1) อ่าน header ที่จะ complete (เฉพาะสถานะ Confirmed) ====
     READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
       ENTITY SalesOrder
@@ -797,8 +805,8 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
     DATA ledger_creates TYPE TABLE FOR CREATE zi_its_ledger.
     DATA matdoc_creates TYPE TABLE FOR CREATE zi_its_matdoc.
     DATA pending_issues TYPE STANDARD TABLE OF ty_pending_issue WITH EMPTY KEY.
-    DATA failed_cids    TYPE STANDARD TABLE OF string WITH EMPTY KEY.
-    DATA failed_orders  TYPE STANDARD TABLE OF zits_so-so_uuid WITH EMPTY KEY.
+    DATA failed_cids    TYPE STANDARD TABLE OF ty_cid_line WITH EMPTY KEY.
+    DATA failed_orders  TYPE STANDARD TABLE OF ty_order_line WITH EMPTY KEY.
 
     GET TIME STAMP FIELD DATA(now).
     DATA(today) = cl_abap_context_info=>get_system_date( ).
@@ -816,13 +824,15 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
           WITH VALUE #( ( %tky = order-%tky ) )
         RESULT DATA(items).
 
-      "--- ใช้ลำดับใน loop เป็นตัวการันตี %cid ไม่ซ้ำ (ItemPos ของ item ไม่เคยถูกเซ็ตค่าจริง ยังเป็นค่าว่างเสมอ
-      "    ถ้าใช้ ItemPos ตอน item มากกว่า 1 รายการจะได้ %cid ซ้ำกัน แล้ว EML create จะ dump) ---
-      LOOP AT items INTO DATA(item) INDEX INTO DATA(item_seq).
+      "--- ใช้ sy-tabix (ลำดับใน loop) เป็นตัวการันตี %cid ไม่ซ้ำ
+      "    (ItemPos ของ item ไม่เคยถูกเซ็ตค่าจริง ยังเป็นค่าว่างเสมอ ถ้าใช้ ItemPos ตอน item
+      "    มากกว่า 1 รายการจะได้ %cid ซ้ำกัน แล้ว EML create จะ dump) ---
+      LOOP AT items INTO DATA(item).
         IF item-ProductID IS INITIAL.
           CONTINUE.
         ENDIF.
 
+        DATA(item_seq) = sy-tabix.
         DATA(cid) = |MD_{ order-SONumber }_{ item_seq }|.
 
         APPEND VALUE #( %cid         = cid
@@ -860,26 +870,26 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
         FAILED   DATA(matdoc_failed).
 
       LOOP AT matdoc_failed-materialdocument INTO DATA(mf).
-        APPEND mf-%cid TO failed_cids.
+        APPEND VALUE #( cid = mf-%cid ) TO failed_cids.
       ENDLOOP.
 
       "==== 4) ถ้ารายการไหนของใบไหนสร้าง material document ไม่สำเร็จ ====
       "        ให้ข้ามทั้งใบนั้น - ไม่ตัดสต๊อกและไม่เปลี่ยนสถานะแม้แต่รายการเดียวของใบนั้น
       LOOP AT pending_issues INTO DATA(chk).
-        READ TABLE failed_cids WITH KEY table_line = chk-cid TRANSPORTING NO FIELDS.
+        READ TABLE failed_cids WITH KEY cid = chk-cid TRANSPORTING NO FIELDS.
         IF sy-subrc = 0.
-          APPEND chk-so_uuid TO failed_orders.
+          APPEND VALUE #( so_uuid = chk-so_uuid ) TO failed_orders.
         ENDIF.
       ENDLOOP.
-      SORT failed_orders.
-      DELETE ADJACENT DUPLICATES FROM failed_orders.
+      SORT failed_orders BY so_uuid.
+      DELETE ADJACENT DUPLICATES FROM failed_orders COMPARING so_uuid.
 
     ENDIF.
 
     "==== 5) ตัดสต๊อกเฉพาะรายการของใบที่ไม่ได้อยู่ใน failed_orders ====
     LOOP AT pending_issues INTO DATA(pending).
 
-      READ TABLE failed_orders WITH KEY table_line = pending-so_uuid TRANSPORTING NO FIELDS.
+      READ TABLE failed_orders WITH KEY so_uuid = pending-so_uuid TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
         CONTINUE.
       ENDIF.
@@ -904,7 +914,7 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
-      READ TABLE failed_orders WITH KEY table_line = order-SOUUID TRANSPORTING NO FIELDS.
+      READ TABLE failed_orders WITH KEY so_uuid = order-SOUUID TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
         APPEND VALUE #( %tky = order-%tky ) TO failed-salesorder.
         APPEND VALUE #( %tky = order-%tky

@@ -232,6 +232,14 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
              quantity   TYPE zits_poitem-quantity,
            END OF ty_pending_receipt.
 
+    TYPES: BEGIN OF ty_cid_line,
+             cid TYPE string,
+           END OF ty_cid_line.
+
+    TYPES: BEGIN OF ty_order_line,
+             po_uuid TYPE zits_po-po_uuid,
+           END OF ty_order_line.
+
     READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
       ENTITY PurchaseOrder FIELDS ( OverallStatus POUUID PONumber CurrencyCode TotalCost BranchID )
       WITH CORRESPONDING #( keys ) RESULT DATA(orders).
@@ -242,8 +250,8 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
     DATA ledger_creates   TYPE TABLE FOR CREATE zi_its_ledger.
     DATA matdoc_creates   TYPE TABLE FOR CREATE zi_its_matdoc.
     DATA pending_receipts TYPE STANDARD TABLE OF ty_pending_receipt WITH EMPTY KEY.
-    DATA failed_cids      TYPE STANDARD TABLE OF string WITH EMPTY KEY.
-    DATA failed_orders    TYPE STANDARD TABLE OF zits_po-po_uuid WITH EMPTY KEY.
+    DATA failed_cids      TYPE STANDARD TABLE OF ty_cid_line WITH EMPTY KEY.
+    DATA failed_orders    TYPE STANDARD TABLE OF ty_order_line WITH EMPTY KEY.
 
     GET TIME STAMP FIELD DATA(now).
     DATA(today) = cl_abap_context_info=>get_system_date( ).
@@ -256,11 +264,13 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
         ENTITY PurchaseOrder BY \_Item FIELDS ( ProductID Quantity Unit )
         WITH VALUE #( ( %tky = order-%tky ) ) RESULT DATA(items).
 
-      "--- ใช้ลำดับใน loop เป็นตัวการันตี %cid ไม่ซ้ำ (ItemPos ของ item ไม่เคยถูกเซ็ตค่าจริง ยังเป็นค่าว่างเสมอ
-      "    ถ้าใช้ ItemPos ตอน item มากกว่า 1 รายการจะได้ %cid ซ้ำกัน แล้ว EML create จะ dump) ---
-      LOOP AT items INTO DATA(item) INDEX INTO DATA(item_seq).
+      "--- ใช้ sy-tabix (ลำดับใน loop) เป็นตัวการันตี %cid ไม่ซ้ำ
+      "    (ItemPos ของ item ไม่เคยถูกเซ็ตค่าจริง ยังเป็นค่าว่างเสมอ ถ้าใช้ ItemPos ตอน item
+      "    มากกว่า 1 รายการจะได้ %cid ซ้ำกัน แล้ว EML create จะ dump) ---
+      LOOP AT items INTO DATA(item).
         IF item-ProductID IS INITIAL. CONTINUE. ENDIF.
 
+        DATA(item_seq) = sy-tabix.
         DATA(cid) = |MD_{ order-PONumber }_{ item_seq }|.
 
         APPEND VALUE #( %cid         = cid
@@ -295,19 +305,19 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
         FAILED   DATA(matdoc_failed).
 
       LOOP AT matdoc_failed-materialdocument INTO DATA(mf).
-        APPEND mf-%cid TO failed_cids.
+        APPEND VALUE #( cid = mf-%cid ) TO failed_cids.
       ENDLOOP.
 
       "--- ถ้ารายการไหนของใบไหนสร้าง material document ไม่สำเร็จ ---
       "    ให้ข้ามทั้งใบนั้น - ไม่ตัดสต๊อกและไม่เปลี่ยนสถานะแม้แต่รายการเดียวของใบนั้น
       LOOP AT pending_receipts INTO DATA(chk).
-        READ TABLE failed_cids WITH KEY table_line = chk-cid TRANSPORTING NO FIELDS.
+        READ TABLE failed_cids WITH KEY cid = chk-cid TRANSPORTING NO FIELDS.
         IF sy-subrc = 0.
-          APPEND chk-po_uuid TO failed_orders.
+          APPEND VALUE #( po_uuid = chk-po_uuid ) TO failed_orders.
         ENDIF.
       ENDLOOP.
-      SORT failed_orders.
-      DELETE ADJACENT DUPLICATES FROM failed_orders.
+      SORT failed_orders BY po_uuid.
+      DELETE ADJACENT DUPLICATES FROM failed_orders COMPARING po_uuid.
 
     ENDIF.
 
@@ -315,7 +325,7 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
     "    goods receipt: update stock if a row exists for this branch+product, else create it
     LOOP AT pending_receipts INTO DATA(pending).
 
-      READ TABLE failed_orders WITH KEY table_line = pending-po_uuid TRANSPORTING NO FIELDS.
+      READ TABLE failed_orders WITH KEY po_uuid = pending-po_uuid TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
         CONTINUE.
       ENDIF.
@@ -342,7 +352,7 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
     LOOP AT orders INTO order.
       IF order-OverallStatus <> 'A'. CONTINUE. ENDIF.
 
-      READ TABLE failed_orders WITH KEY table_line = order-POUUID TRANSPORTING NO FIELDS.
+      READ TABLE failed_orders WITH KEY po_uuid = order-POUUID TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
         APPEND VALUE #( %tky = order-%tky ) TO failed-purchaseorder.
         APPEND VALUE #( %tky = order-%tky
