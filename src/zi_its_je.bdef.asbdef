@@ -1,35 +1,110 @@
 managed implementation in class zbp_i_its_je unique;
 strict ( 2 );
 with draft;
-define behavior for ZI_ITS_JE //alias <alias_name>
+
+define behavior for ZI_ITS_JE alias JournalEntry
 persistent table zits_je
 draft table zits_je_d
 lock master total etag LastChangedAt
 etag master LocalLastChangedAt
-authorization master ( instance )
-//etag master <field_name>
+authorization master ( global )
 {
   create ( authorization : global );
-  update;
-  delete;
-  field ( readonly ) JeUuid;
-  association _Item { create; }
+
+  // update and delete stay declared here on purpose. A posted entry is frozen
+  // through instance feature control (see get_instance_features), NOT by
+  // removing update from this behaviour definition - the framework still needs
+  // the update capability so the Post action itself can write PostingStatus.
+  update ( features : instance );
+  delete ( features : instance );
+
+  // create on the association is feature-controlled too, so no new line can be
+  // added to an entry that has already been posted
+  association _Item { create ( features : instance ); }
+
+  field ( readonly, numbering : managed ) JEUUID;
+
+  // JENumber is assigned on save, the totals are computed from the lines and
+  // PostingStatus is driven by the Post action - none of them are user input
+  field ( readonly ) JENumber, TotalDebit, TotalCredit, PostingStatus,
+                     CreatedBy, CreatedAt,
+                     LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
+
+  field ( mandatory ) PostingDate, DocType, CurrencyCode;
+
+  determination setHeaderDefaults on modify { create; }
+  determination assignJENumber    on save   { create; }
+
+  validation validateBalance on save { create; update; }
+
+  action ( features : instance ) Post result [1] $self;
+
   draft action Activate optimized;
   draft action Discard;
   draft action Edit;
   draft action Resume;
-  draft determine action Prepare;
+  draft determine action Prepare
+  {
+    validation validateBalance;
+    validation JournalEntryItem~validateLine;
+  }
+
+  mapping for zits_je
+  {
+    JEUUID             = je_uuid;
+    JENumber           = je_number;
+    PostingDate        = posting_date;
+    DocType            = doc_type;
+    BranchID           = branch_id;
+    HeaderText         = header_text;
+    RefDocType         = ref_doc_type;
+    RefDocNumber       = ref_doc_number;
+    RefDocUUID         = ref_doc_uuid;
+    TotalDebit         = total_debit;
+    TotalCredit        = total_credit;
+    CurrencyCode       = currency_code;
+    PostingStatus      = posting_status;
+    CreatedBy          = created_by;
+    CreatedAt          = created_at;
+    LocalLastChangedBy = local_last_changed_by;
+    LocalLastChangedAt = local_last_changed_at;
+    LastChangedAt      = last_changed_at;
+  }
 }
 
-define behavior for ZI_ITS_JEITEM //alias <alias_name>
+define behavior for ZI_ITS_JEITEM alias JournalEntryItem
 persistent table zits_jeitem
 draft table zits_jeitem_d
 lock dependent by _JournalEntry
 authorization dependent by _JournalEntry
-//etag master <field_name>
+etag master LocalLastChangedAt
 {
-  update;
-  delete;
-  field ( readonly ) JeitemUuid,ParentUUID;
+  // same reasoning as the header: lines of a posted entry are frozen through
+  // getItemFeatures, not by taking update/delete away here
+  update ( features : instance );
+  delete ( features : instance );
   association _JournalEntry;
+
+  field ( readonly, numbering : managed ) JEItemUUID;
+  field ( readonly ) ParentUUID, ItemPos, LocalLastChangedAt;
+  field ( mandatory ) GLAccount, DCIndicator, Amount;
+
+  determination assignItemPos on modify { create; }
+  determination calcTotals    on modify { field Amount, DCIndicator; create; delete; }
+
+  validation validateLine on save { create; update; field GLAccount, DCIndicator, Amount; }
+
+  mapping for zits_jeitem
+  {
+    JEItemUUID         = jeitem_uuid;
+    ParentUUID         = parent_uuid;
+    ItemPos            = item_pos;
+    GLAccount          = gl_account;
+    DCIndicator        = dc_indicator;
+    Amount             = amount;
+    CurrencyCode       = currency_code;
+    CostCenterID       = cost_center_id;
+    LineText           = line_text;
+    LocalLastChangedAt = local_last_changed_at;
+  }
 }

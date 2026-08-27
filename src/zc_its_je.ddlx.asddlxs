@@ -1,14 +1,92 @@
 @Metadata.layer: #CORE
-annotate view ZC_ITS_JE
-    with 
-{ 
 
-    @UI.facet: [ { id: 'General',
-                 purpose: #STANDARD,
-                 type: #IDENTIFICATION_REFERENCE,
-                 label: 'place holder Details',
-                 position: 10 } ]
-    
-    placeholderid;
-    
+@UI: {
+  headerInfo: {
+    typeName: 'Journal Entry',
+    typeNamePlural: 'Journal Entries',
+    title:       { type: #STANDARD, value: 'JENumber' },
+    description: { type: #STANDARD, value: 'HeaderText' }
+  }
+}
+
+annotate view ZC_ITS_JE with
+{
+  @UI.facet: [
+    { id: 'General', purpose: #STANDARD, type: #IDENTIFICATION_REFERENCE,
+      label: 'General Information', position: 10 },
+    { id: 'Items',   purpose: #STANDARD, type: #LINEITEM_REFERENCE,
+      label: 'Line Items', position: 20, targetElement: '_Item' }
+  ]
+  @UI.hidden: true
+  JEUUID;
+
+  @UI: {
+    lineItem: [ { position: 10, importance: #HIGH },
+                { type: #FOR_ACTION, dataAction: 'Post', label: 'Post' } ],
+    identification: [ { position: 10 },
+                { type: #FOR_ACTION, dataAction: 'Post', label: 'Post' } ]
+  }
+  JENumber;
+
+  @UI: { lineItem:       [ { position: 20, importance: #HIGH } ],
+         identification: [ { position: 20 } ],
+         selectionField: [ { position: 10 } ] }
+  PostingDate;
+
+  @UI: { lineItem:       [ { position: 30, importance: #MEDIUM } ],
+         identification: [ { position: 30 } ],
+         selectionField: [ { position: 20 } ] }
+  DocType;
+
+  @UI: { lineItem:       [ { position: 40, importance: #HIGH } ],
+         identification: [ { position: 40 } ],
+         selectionField: [ { position: 30 } ],
+         textArrangement: #TEXT_FIRST }
+  BranchID;
+
+  @UI.hidden: true
+  BranchName;
+
+  @UI: { lineItem:       [ { position: 50, importance: #MEDIUM } ],
+         identification: [ { position: 50 } ] }
+  HeaderText;
+
+  @UI: { lineItem:       [ { position: 60, importance: #HIGH, criticality: 'BalanceCriticality' } ],
+         identification: [ { position: 60 } ] }
+  TotalDebit;
+
+  @UI: { lineItem:       [ { position: 70, importance: #HIGH } ],
+         identification: [ { position: 70 } ] }
+  TotalCredit;
+
+  @UI: { identification: [ { position: 75 } ] }
+  CurrencyCode;
+
+  @UI: { lineItem:       [ { position: 80, importance: #HIGH } ],
+         identification: [ { position: 80 } ],
+         selectionField: [ { position: 40 } ] }
+  PostingStatus;
+
+  @UI.hidden: true
+  BalanceCriticality;
+
+  @UI: { identification: [ { position: 90 } ] }
+  RefDocType;
+
+  @UI: { identification: [ { position: 100 } ] }
+  RefDocNumber;
+
+  @UI.hidden: true
+  RefDocUUID;
+
+  @UI.hidden: true
+  CreatedBy;
+  @UI.hidden: true
+  CreatedAt;
+  @UI.hidden: true
+  LocalLastChangedBy;
+  @UI.hidden: true
+  LocalLastChangedAt;
+  @UI.hidden: true
+  LastChangedAt;
 }

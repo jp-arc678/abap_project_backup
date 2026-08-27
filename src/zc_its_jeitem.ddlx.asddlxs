@@ -1,14 +1,45 @@
 @Metadata.layer: #CORE
-annotate view ZC_ITS_JEITEM
-    with 
-{ 
 
-    @UI.facet: [ { id: 'General',
-                 purpose: #STANDARD,
-                 type: #IDENTIFICATION_REFERENCE,
-                 label: 'place holder Details',
-                 position: 10 } ]
-    
-    placeholderid;
-    
+annotate view ZC_ITS_JEITEM with
+{
+  @UI.hidden: true
+  JEItemUUID;
+  @UI.hidden: true
+  ParentUUID;
+
+  @UI: { lineItem: [ { position: 10, importance: #HIGH } ] }
+  ItemPos;
+
+  @UI: { lineItem:       [ { position: 20, importance: #HIGH } ],
+         identification: [ { position: 20 } ],
+         textArrangement: #TEXT_FIRST }
+  GLAccount;
+
+  @UI.hidden: true
+  AccountName;
+
+  @UI: { lineItem:       [ { position: 30, importance: #HIGH } ],
+         identification: [ { position: 30 } ] }
+  DCIndicator;
+
+  @UI: { lineItem:       [ { position: 40, importance: #HIGH } ],
+         identification: [ { position: 40 } ] }
+  Amount;
+
+  @UI: { identification: [ { position: 45 } ] }
+  CurrencyCode;
+
+  @UI: { lineItem:       [ { position: 50, importance: #MEDIUM } ],
+         identification: [ { position: 50 } ] }
+  CostCenterID;
+
+  @UI.hidden: true
+  CostCenterName;
+
+  @UI: { lineItem:       [ { position: 60, importance: #MEDIUM } ],
+         identification: [ { position: 60 } ] }
+  LineText;
+
+  @UI.hidden: true
+  LocalLastChangedAt;
 }
