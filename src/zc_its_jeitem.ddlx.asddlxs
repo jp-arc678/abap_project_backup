@@ -1,5 +1,5 @@
 @Metadata.layer: #CORE
-annotate view ZC_ITS_REGION
+annotate view ZC_ITS_JEITEM
     with 
 { 
 
