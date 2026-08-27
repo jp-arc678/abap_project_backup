@@ -3,6 +3,8 @@
 {
 "FROM":
 [
+"ZI_ITS_COSTCTR",
+"ZI_ITS_GLACCT",
 "ZI_ITS_JEITEM"
 ],
 "ASSOCIATED":
