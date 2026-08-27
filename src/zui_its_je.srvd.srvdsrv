@@ -1,0 +1,5 @@
+@EndUserText.label: 'service def for Journalentry'
+define service ZUI_ITS_JE {
+  expose ZC_ITS_JE     as JournalEntry;
+  expose ZC_ITS_JEITEM as JournalEntryItem;
+}

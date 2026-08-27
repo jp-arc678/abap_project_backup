@@ -1,0 +1,35 @@
+managed implementation in class zbp_i_its_je unique;
+strict ( 2 );
+with draft;
+define behavior for ZI_ITS_JE //alias <alias_name>
+persistent table zits_je
+draft table zits_je_d
+lock master total etag LastChangedAt
+etag master LocalLastChangedAt
+authorization master ( instance )
+//etag master <field_name>
+{
+  create ( authorization : global );
+  update;
+  delete;
+  field ( readonly ) JeUuid;
+  association _Item { create; }
+  draft action Activate optimized;
+  draft action Discard;
+  draft action Edit;
+  draft action Resume;
+  draft determine action Prepare;
+}
+
+define behavior for ZI_ITS_JEITEM //alias <alias_name>
+persistent table zits_jeitem
+draft table zits_jeitem_d
+lock dependent by _JournalEntry
+authorization dependent by _JournalEntry
+//etag master <field_name>
+{
+  update;
+  delete;
+  field ( readonly ) JeitemUuid,ParentUUID;
+  association _JournalEntry;
+}
