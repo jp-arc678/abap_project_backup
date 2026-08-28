@@ -38,6 +38,9 @@ define root view entity ZI_ITS_SALESORDER
       @EndUserText.label: 'Currency'
       currency_code         as CurrencyCode,
 
+      @EndUserText.label: 'Payment Method'
+      payment_method        as PaymentMethod,
+
       @EndUserText.label: 'Approved By'
       approved_by           as ApprovedBy,
 

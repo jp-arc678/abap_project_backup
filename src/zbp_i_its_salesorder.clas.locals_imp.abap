@@ -84,7 +84,7 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 
     READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
       ENTITY SalesOrder
-        FIELDS ( OverallStatus SalesDate CurrencyCode BranchID SalespersonID )
+        FIELDS ( OverallStatus SalesDate CurrencyCode BranchID SalespersonID PaymentMethod )
         WITH CORRESPONDING #( keys )
       RESULT DATA(orders).
 
@@ -112,6 +112,10 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
         order-CurrencyCode = 'THB'.
         changed = abap_true.
       ENDIF.
+      IF order-PaymentMethod IS INITIAL.
+        order-PaymentMethod = 'C'.            "Cash - the walk-in default
+        changed = abap_true.
+      ENDIF.
       IF order-BranchID IS INITIAL AND current_employee-branch_id IS NOT INITIAL.
         order-BranchID = current_employee-branch_id.
         changed = abap_true.
@@ -127,14 +131,16 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
                         SalesDate     = order-SalesDate
                         CurrencyCode  = order-CurrencyCode
                         BranchID      = order-BranchID
-                        SalespersonID = order-SalespersonID ) TO updates.
+                        SalespersonID = order-SalespersonID
+                        PaymentMethod = order-PaymentMethod ) TO updates.
       ENDIF.
     ENDLOOP.
 
     IF updates IS NOT INITIAL.
       MODIFY ENTITIES OF zi_its_salesorder IN LOCAL MODE
         ENTITY SalesOrder
-          UPDATE FIELDS ( OverallStatus SalesDate CurrencyCode BranchID SalespersonID )
+          UPDATE FIELDS ( OverallStatus SalesDate CurrencyCode BranchID
+                          SalespersonID PaymentMethod )
           WITH updates
         REPORTED DATA(rep).
     ENDIF.
@@ -149,7 +155,7 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 
     READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
       ENTITY SalesOrderItem
-        FIELDS ( ProductID Quantity SalePrice Unit )
+        FIELDS ( ProductID Quantity SalePrice CostPrice Unit )
         WITH CORRESPONDING #( keys )
       RESULT DATA(items).
 
@@ -163,7 +169,7 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 
       "--- read master data of the chosen product ---
       SELECT SINGLE FROM zits_product
-        FIELDS unit, sale_price, currency_code
+        FIELDS unit, sale_price, cost_price, currency_code
         WHERE product_id = @item-ProductID
         INTO @DATA(product).
 
@@ -181,12 +187,21 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
         item-SalePrice = product-sale_price.
       ENDIF.
 
+      "--- snapshot what the product costs us right now. This is the figure
+      "    booked to cost of goods sold when the order is completed, so it
+      "    must be the cost AT THE TIME OF SALE - once taken it is never
+      "    refreshed, even if the product master price changes later. ---
+      IF item-CostPrice IS INITIAL.
+        item-CostPrice = product-cost_price.
+      ENDIF.
+
       "--- calculate line amount ---
       DATA(line_amount) = item-Quantity * item-SalePrice.
 
       APPEND VALUE #( %tky         = item-%tky
                       Unit         = item-Unit
                       SalePrice    = item-SalePrice
+                      CostPrice    = item-CostPrice
                       Amount       = line_amount
                       CurrencyCode = product-currency_code ) TO updates.
 
@@ -195,7 +210,7 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
     IF updates IS NOT INITIAL.
       MODIFY ENTITIES OF zi_its_salesorder IN LOCAL MODE
         ENTITY SalesOrderItem
-          UPDATE FIELDS ( Unit SalePrice Amount CurrencyCode )
+          UPDATE FIELDS ( Unit SalePrice CostPrice Amount CurrencyCode )
           WITH updates
         REPORTED DATA(rep).
     ENDIF.
@@ -793,10 +808,24 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
              so_uuid TYPE zits_so-so_uuid,
            END OF ty_order_line.
 
+    "--- links a journal entry %cid (header or line) back to its order,
+    "    so a create failure can be blamed on the right sales order ---
+    TYPES: BEGIN OF ty_je_link,
+             cid     TYPE string,
+             so_uuid TYPE zits_so-so_uuid,
+           END OF ty_je_link.
+
+    "--- what the goods sold actually cost us, summed per order ---
+    TYPES: BEGIN OF ty_order_cost,
+             so_uuid    TYPE zits_so-so_uuid,
+             total_cost TYPE zits_so-total_amount,
+           END OF ty_order_cost.
+
     "==== 1) อ่าน header ที่จะ complete (เฉพาะสถานะ Confirmed) ====
     READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
       ENTITY SalesOrder
-        FIELDS ( OverallStatus SOUUID SONumber CurrencyCode TotalAmount BranchID )
+        FIELDS ( OverallStatus SOUUID SONumber CurrencyCode TotalAmount
+                 BranchID PaymentMethod )
         WITH CORRESPONDING #( keys )
       RESULT DATA(orders).
 
@@ -807,6 +836,11 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
     DATA pending_issues TYPE STANDARD TABLE OF ty_pending_issue WITH EMPTY KEY.
     DATA failed_cids    TYPE STANDARD TABLE OF ty_cid_line WITH EMPTY KEY.
     DATA failed_orders  TYPE STANDARD TABLE OF ty_order_line WITH EMPTY KEY.
+    DATA je_creates     TYPE TABLE FOR CREATE zi_its_je.
+    DATA je_items       TYPE TABLE FOR CREATE zi_its_je\_Item.
+    DATA je_links       TYPE STANDARD TABLE OF ty_je_link WITH EMPTY KEY.
+    DATA order_costs    TYPE STANDARD TABLE OF ty_order_cost WITH EMPTY KEY.
+    DATA no_cost_center TYPE STANDARD TABLE OF ty_order_line WITH EMPTY KEY.
 
     GET TIME STAMP FIELD DATA(now).
     DATA(today) = cl_abap_context_info=>get_system_date( ).
@@ -820,9 +854,14 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 
       READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
         ENTITY SalesOrder BY \_Item
-          FIELDS ( ProductID Quantity Unit )
+          FIELDS ( ProductID Quantity Unit CostPrice )
           WITH VALUE #( ( %tky = order-%tky ) )
         RESULT DATA(items).
+
+      "--- what these goods cost us, at the price snapshotted when the
+      "    line was entered - this becomes the cost of goods sold ---
+      DATA order_cost TYPE zits_so-total_amount.
+      CLEAR order_cost.
 
       "--- ใช้ sy-tabix (ลำดับใน loop) เป็นตัวการันตี %cid ไม่ซ้ำ
       "    (ItemPos ของ item ไม่เคยถูกเซ็ตค่าจริง ยังเป็นค่าว่างเสมอ ถ้าใช้ ItemPos ตอน item
@@ -854,7 +893,12 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
                         product_id = item-ProductID
                         quantity   = item-Quantity )
                TO pending_issues.
+
+        order_cost = order_cost + ( item-Quantity * item-CostPrice ).
       ENDLOOP.
+
+      APPEND VALUE #( so_uuid    = order-SOUUID
+                      total_cost = order_cost ) TO order_costs.
 
     ENDLOOP.
 
@@ -881,6 +925,148 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
           APPEND VALUE #( so_uuid = chk-so_uuid ) TO failed_orders.
         ENDIF.
       ENDLOOP.
+      SORT failed_orders BY so_uuid.
+      DELETE ADJACENT DUPLICATES FROM failed_orders COMPARING so_uuid.
+
+    ENDIF.
+
+    "==================================================================
+    " JOURNAL ENTRY - the money side of the same business event.
+    " Built only for orders that already got their material document,
+    " and created BEFORE the stock is touched, so a failure here still
+    " stops the whole order (same all-or-nothing unit).
+    "
+    " Four lines:
+    "   cash or bank   D  total amount   the customer paid us
+    "   revenue        C  total amount   we earned it
+    "   cost of sales  D  total cost     the goods left us
+    "   inventory      C  total cost     stock is worth that much less
+    "==================================================================
+    LOOP AT orders INTO order.
+
+      IF order-OverallStatus <> 'C'.
+        CONTINUE.
+      ENDIF.
+
+      READ TABLE failed_orders WITH KEY so_uuid = order-SOUUID TRANSPORTING NO FIELDS.
+      IF sy-subrc = 0.
+        CONTINUE.
+      ENDIF.
+
+      "--- every posting of a branch is booked against its cost center;
+      "    a branch without one is a master data problem, not something
+      "    to post around silently ---
+      DATA(cost_center) = zcl_its_gl_mapping=>get_cost_center_for_branch( order-BranchID ).
+      IF cost_center IS INITIAL.
+        APPEND VALUE #( so_uuid = order-SOUUID ) TO failed_orders.
+        APPEND VALUE #( so_uuid = order-SOUUID ) TO no_cost_center.
+        CONTINUE.
+      ENDIF.
+
+      READ TABLE order_costs WITH KEY so_uuid = order-SOUUID INTO DATA(oc).
+      DATA(total_cost) = COND zits_so-total_amount( WHEN sy-subrc = 0 THEN oc-total_cost ELSE 0 ).
+
+      DATA(debit_account) = zcl_its_gl_mapping=>get_sales_debit_account( order-PaymentMethod ).
+      DATA(je_cid)        = |JE_{ order-SONumber }|.
+
+      APPEND VALUE #( %cid         = je_cid
+                      PostingDate  = today
+                      DocType      = 'RV'
+                      BranchID     = order-BranchID
+                      HeaderText   = |Sale { order-SONumber }|
+                      RefDocType   = 'SO'
+                      RefDocNumber = order-SONumber
+                      RefDocUUID   = order-SOUUID
+                      CurrencyCode = order-CurrencyCode ) TO je_creates.
+
+      DATA je_lines LIKE LINE OF je_items.
+      CLEAR je_lines.
+      je_lines-%cid_ref = je_cid.
+
+      "--- the revenue pair, always posted ---
+      APPEND VALUE #( %cid         = |{ je_cid }_1|
+                      GLAccount    = debit_account
+                      DCIndicator  = 'D'
+                      Amount       = order-TotalAmount
+                      CurrencyCode = order-CurrencyCode
+                      CostCenterID = cost_center
+                      LineText     = |Sale { order-SONumber }| ) TO je_lines-%target.
+
+      APPEND VALUE #( %cid         = |{ je_cid }_2|
+                      GLAccount    = zcl_its_gl_mapping=>gc_revenue
+                      DCIndicator  = 'C'
+                      Amount       = order-TotalAmount
+                      CurrencyCode = order-CurrencyCode
+                      CostCenterID = cost_center
+                      LineText     = |Revenue { order-SONumber }| ) TO je_lines-%target.
+
+      APPEND VALUE #( cid = je_cid         so_uuid = order-SOUUID ) TO je_links.
+      APPEND VALUE #( cid = |{ je_cid }_1| so_uuid = order-SOUUID ) TO je_links.
+      APPEND VALUE #( cid = |{ je_cid }_2| so_uuid = order-SOUUID ) TO je_links.
+
+      "--- the cost pair, only when we actually know what the goods cost.
+      "    Orders entered before CostPrice existed carry zero, and a zero
+      "    line would be rejected by the Journal Entry line validation and
+      "    take the whole sale down with it. Posting the revenue pair alone
+      "    still balances; the missing cost shows up as an inflated margin,
+      "    which is visible and fixable, unlike a blocked sale. ---
+      IF total_cost > 0.
+
+        APPEND VALUE #( %cid         = |{ je_cid }_3|
+                        GLAccount    = zcl_its_gl_mapping=>gc_cogs
+                        DCIndicator  = 'D'
+                        Amount       = total_cost
+                        CurrencyCode = order-CurrencyCode
+                        CostCenterID = cost_center
+                        LineText     = |Cost of goods sold { order-SONumber }| ) TO je_lines-%target.
+
+        APPEND VALUE #( %cid         = |{ je_cid }_4|
+                        GLAccount    = zcl_its_gl_mapping=>gc_inventory
+                        DCIndicator  = 'C'
+                        Amount       = total_cost
+                        CurrencyCode = order-CurrencyCode
+                        CostCenterID = cost_center
+                        LineText     = |Inventory reduction { order-SONumber }| ) TO je_lines-%target.
+
+        APPEND VALUE #( cid = |{ je_cid }_3| so_uuid = order-SOUUID ) TO je_links.
+        APPEND VALUE #( cid = |{ je_cid }_4| so_uuid = order-SOUUID ) TO je_links.
+
+      ENDIF.
+
+      APPEND je_lines TO je_items.
+
+    ENDLOOP.
+
+    "--- cross-BO create (no LOCAL MODE). Journal Entry's own
+    "    determinations number the lines, compute the totals, assign the
+    "    document number and post it - none of that is duplicated here ---
+    IF je_creates IS NOT INITIAL.
+
+      MODIFY ENTITIES OF zi_its_je
+        ENTITY JournalEntry
+          CREATE FIELDS ( PostingDate DocType BranchID HeaderText
+                          RefDocType RefDocNumber RefDocUUID CurrencyCode )
+            WITH je_creates
+          CREATE BY \_Item FIELDS ( GLAccount DCIndicator Amount CurrencyCode
+                                    CostCenterID LineText )
+            WITH je_items
+        REPORTED DATA(je_rep)
+        FAILED   DATA(je_failed).
+
+      LOOP AT je_failed-journalentry INTO DATA(jf_hdr).
+        READ TABLE je_links WITH KEY cid = jf_hdr-%cid INTO DATA(link_hdr).
+        IF sy-subrc = 0.
+          APPEND VALUE #( so_uuid = link_hdr-so_uuid ) TO failed_orders.
+        ENDIF.
+      ENDLOOP.
+
+      LOOP AT je_failed-journalentryitem INTO DATA(jf_item).
+        READ TABLE je_links WITH KEY cid = jf_item-%cid INTO DATA(link_item).
+        IF sy-subrc = 0.
+          APPEND VALUE #( so_uuid = link_item-so_uuid ) TO failed_orders.
+        ENDIF.
+      ENDLOOP.
+
       SORT failed_orders BY so_uuid.
       DELETE ADJACENT DUPLICATES FROM failed_orders COMPARING so_uuid.
 
@@ -916,11 +1102,18 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 
       READ TABLE failed_orders WITH KEY so_uuid = order-SOUUID TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
+
+        READ TABLE no_cost_center WITH KEY so_uuid = order-SOUUID TRANSPORTING NO FIELDS.
+        DATA(msg_text) = COND string(
+          WHEN sy-subrc = 0
+          THEN |No active cost center for branch { order-BranchID } - { order-SONumber } not completed|
+          ELSE |Document posting failed for { order-SONumber } - order not completed, please retry| ).
+
         APPEND VALUE #( %tky = order-%tky ) TO failed-salesorder.
         APPEND VALUE #( %tky = order-%tky
                         %msg = new_message_with_text(
                                  severity = if_abap_behv_message=>severity-error
-                                 text     = |Material document creation failed for { order-SONumber } - order not completed, please retry| )
+                                 text     = msg_text )
                       ) TO reported-salesorder.
         CONTINUE.
       ENDIF.

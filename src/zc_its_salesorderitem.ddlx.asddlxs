@@ -31,6 +31,11 @@ annotate view ZC_ITS_SALESORDERITEM with
          identification: [ { position: 40 } ] }
   SalePrice;
 
+  // shown on the detail page only - the cost booked to COGS when the
+  // order is completed, kept off the item list to avoid clutter
+  @UI: { identification: [ { position: 45 } ] }
+  CostPrice;
+
   @UI: { lineItem:       [ { position: 50, importance: #HIGH } ],
          identification: [ { position: 50 } ] }
   Amount;

@@ -29,6 +29,11 @@ define root view entity ZC_ITS_SALESORDER
       _Salesperson.EmployeeName as SalespersonName,
       @Consumption.valueHelpDefinition: [ { entity: { name: 'I_CurrencyStdVH', element: 'Currency' } } ]
       CurrencyCode,
+
+      // C = Cash, R = Credit card, T = Transfer - decides which account
+      // the sale is debited to when the journal entry is posted
+      PaymentMethod,
+
       SalesDate,
       @Semantics.amount.currencyCode: 'CurrencyCode'
       TotalAmount,

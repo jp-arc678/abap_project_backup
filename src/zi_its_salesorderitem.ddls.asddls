@@ -28,6 +28,10 @@ define view entity ZI_ITS_SALESORDERITEM
       @Semantics.amount.currencyCode: 'CurrencyCode'
       sale_price            as SalePrice,
 
+      @EndUserText.label: 'Cost Price'
+      @Semantics.amount.currencyCode: 'CurrencyCode'
+      cost_price            as CostPrice,
+
       @EndUserText.label: 'Amount'
       @Semantics.amount.currencyCode: 'CurrencyCode'
       amount                as Amount,

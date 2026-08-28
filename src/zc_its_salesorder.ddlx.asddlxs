@@ -64,6 +64,11 @@ annotate view ZC_ITS_SALESORDER with
   @UI: { identification: [ { position: 45 } ] }
   CurrencyCode;
 
+  @UI: { lineItem:       [ { position: 47, importance: #LOW } ],
+         identification: [ { position: 47 } ],
+         selectionField: [ { position: 47 } ] }
+  PaymentMethod;
+
   @UI: { lineItem:       [ { position: 50, importance: #LOW } ],
          identification: [ { position: 50 } ],
          selectionField: [ { position: 50 } ] }

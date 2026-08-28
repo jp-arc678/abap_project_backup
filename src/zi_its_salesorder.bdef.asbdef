@@ -58,6 +58,7 @@ authorization master ( global )
     SalesDate          = sales_date;
     TotalAmount        = total_amount;
     CurrencyCode       = currency_code;
+    PaymentMethod      = payment_method;
     ApprovedBy         = approved_by;
     ApprovedAt         = approved_at;
     RejectionReason    = rejection_reason;
@@ -81,7 +82,9 @@ authorization master ( global )
    association _SalesOrder;
 
    field ( readonly, numbering : managed ) SOItemUUID;
-   field ( readonly ) ParentUUID, Amount, LocalLastChangedAt;
+   // CostPrice is a snapshot of what the product cost at the moment of sale,
+   // taken by fetchProductData - never typed, never refreshed afterwards
+   field ( readonly ) ParentUUID, Amount, CostPrice, LocalLastChangedAt;
    determination fetchProductData on modify { field ProductID, Quantity; }
    determination calcTotalAmount   on modify { field Quantity, SalePrice; create; delete;}
    validation validateQuantity on save { create; update; field Quantity; }
@@ -95,6 +98,7 @@ authorization master ( global )
      Quantity           = quantity;
      Unit               = unit;
      SalePrice          = sale_price;
+     CostPrice          = cost_price;
      Amount             = amount;
      CurrencyCode       = currency_code;
      LocalLastChangedAt = local_last_changed_at;

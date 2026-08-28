@@ -18,6 +18,8 @@ define view entity ZC_ITS_SALESORDERITEM
       @Semantics.amount.currencyCode: 'CurrencyCode'
       SalePrice,
       @Semantics.amount.currencyCode: 'CurrencyCode'
+      CostPrice,
+      @Semantics.amount.currencyCode: 'CurrencyCode'
       Amount,
        @Consumption.valueHelpDefinition: [ { entity: { name: 'I_CurrencyStdVH', element: 'Currency' } } ]
       CurrencyCode,
