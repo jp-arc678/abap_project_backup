@@ -240,6 +240,13 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
              po_uuid TYPE zits_po-po_uuid,
            END OF ty_order_line.
 
+    "--- links a journal entry %cid (header or line) back to its order,
+    "    so a create failure can be blamed on the right purchase order ---
+    TYPES: BEGIN OF ty_je_link,
+             cid     TYPE string,
+             po_uuid TYPE zits_po-po_uuid,
+           END OF ty_je_link.
+
     READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
       ENTITY PurchaseOrder FIELDS ( OverallStatus POUUID PONumber CurrencyCode TotalCost BranchID )
       WITH CORRESPONDING #( keys ) RESULT DATA(orders).
@@ -252,6 +259,10 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
     DATA pending_receipts TYPE STANDARD TABLE OF ty_pending_receipt WITH EMPTY KEY.
     DATA failed_cids      TYPE STANDARD TABLE OF ty_cid_line WITH EMPTY KEY.
     DATA failed_orders    TYPE STANDARD TABLE OF ty_order_line WITH EMPTY KEY.
+    DATA je_creates       TYPE TABLE FOR CREATE zi_its_je.
+    DATA je_items         TYPE TABLE FOR CREATE zi_its_je\_Item.
+    DATA je_links         TYPE STANDARD TABLE OF ty_je_link WITH EMPTY KEY.
+    DATA no_cost_center   TYPE STANDARD TABLE OF ty_order_line WITH EMPTY KEY.
 
     GET TIME STAMP FIELD DATA(now).
     DATA(today) = cl_abap_context_info=>get_system_date( ).
@@ -321,6 +332,102 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
 
     ENDIF.
 
+    "==================================================================
+    " JOURNAL ENTRY - money side of the same business event.
+    " Built only for orders that already got their material document,
+    " and created BEFORE the stock is touched, so that a failure here
+    " still stops the whole order (same all-or-nothing unit).
+    "==================================================================
+    LOOP AT orders INTO order.
+      IF order-OverallStatus <> 'A'. CONTINUE. ENDIF.
+
+      READ TABLE failed_orders WITH KEY po_uuid = order-POUUID TRANSPORTING NO FIELDS.
+      IF sy-subrc = 0.
+        CONTINUE.
+      ENDIF.
+
+      "--- every posting of a branch is booked against its cost center;
+      "    a branch without one is a master data problem, not something
+      "    to post around silently ---
+      DATA(cost_center) = zcl_its_gl_mapping=>get_cost_center_for_branch( order-BranchID ).
+      IF cost_center IS INITIAL.
+        APPEND VALUE #( po_uuid = order-POUUID ) TO failed_orders.
+        APPEND VALUE #( po_uuid = order-POUUID ) TO no_cost_center.
+        CONTINUE.
+      ENDIF.
+
+      DATA(je_cid) = |JE_{ order-PONumber }|.
+
+      "--- header ---
+      APPEND VALUE #( %cid         = je_cid
+                      PostingDate  = today
+                      DocType      = 'RE'
+                      BranchID     = order-BranchID
+                      HeaderText   = |Purchase { order-PONumber }|
+                      RefDocType   = 'PO'
+                      RefDocNumber = order-PONumber
+                      RefDocUUID   = order-POUUID
+                      CurrencyCode = order-CurrencyCode ) TO je_creates.
+
+      "--- two lines: inventory goes up, the supplier is owed the money ---
+      APPEND VALUE #( %cid_ref = je_cid
+                      %target  = VALUE #(
+                        ( %cid         = |{ je_cid }_1|
+                          GLAccount    = zcl_its_gl_mapping=>gc_inventory
+                          DCIndicator  = 'D'
+                          Amount       = order-TotalCost
+                          CurrencyCode = order-CurrencyCode
+                          CostCenterID = cost_center
+                          LineText     = |Goods receipt { order-PONumber }| )
+                        ( %cid         = |{ je_cid }_2|
+                          GLAccount    = zcl_its_gl_mapping=>gc_payables
+                          DCIndicator  = 'C'
+                          Amount       = order-TotalCost
+                          CurrencyCode = order-CurrencyCode
+                          CostCenterID = cost_center
+                          LineText     = |Supplier liability { order-PONumber }| ) ) ) TO je_items.
+
+      "--- header and both line cids point back at this order ---
+      APPEND VALUE #( cid = je_cid            po_uuid = order-POUUID ) TO je_links.
+      APPEND VALUE #( cid = |{ je_cid }_1|    po_uuid = order-POUUID ) TO je_links.
+      APPEND VALUE #( cid = |{ je_cid }_2|    po_uuid = order-POUUID ) TO je_links.
+    ENDLOOP.
+
+    "--- cross-BO create (no LOCAL MODE). Journal Entry's own
+    "    determinations number the lines, compute the totals, assign the
+    "    document number and post it - none of that is duplicated here ---
+    IF je_creates IS NOT INITIAL.
+
+      MODIFY ENTITIES OF zi_its_je
+        ENTITY JournalEntry
+          CREATE FIELDS ( PostingDate DocType BranchID HeaderText
+                          RefDocType RefDocNumber RefDocUUID CurrencyCode )
+            WITH je_creates
+          CREATE BY \_Item FIELDS ( GLAccount DCIndicator Amount CurrencyCode
+                                    CostCenterID LineText )
+            WITH je_items
+        REPORTED DATA(je_rep)
+        FAILED   DATA(je_failed).
+
+      LOOP AT je_failed-journalentry INTO DATA(jf_hdr).
+        READ TABLE je_links WITH KEY cid = jf_hdr-%cid INTO DATA(link_hdr).
+        IF sy-subrc = 0.
+          APPEND VALUE #( po_uuid = link_hdr-po_uuid ) TO failed_orders.
+        ENDIF.
+      ENDLOOP.
+
+      LOOP AT je_failed-journalentryitem INTO DATA(jf_item).
+        READ TABLE je_links WITH KEY cid = jf_item-%cid INTO DATA(link_item).
+        IF sy-subrc = 0.
+          APPEND VALUE #( po_uuid = link_item-po_uuid ) TO failed_orders.
+        ENDIF.
+      ENDLOOP.
+
+      SORT failed_orders BY po_uuid.
+      DELETE ADJACENT DUPLICATES FROM failed_orders COMPARING po_uuid.
+
+    ENDIF.
+
     "--- ตัดสต๊อกเฉพาะรายการของใบที่ไม่ได้อยู่ใน failed_orders ---
     "    goods receipt: update stock if a row exists for this branch+product, else create it
     LOOP AT pending_receipts INTO DATA(pending).
@@ -354,11 +461,18 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
 
       READ TABLE failed_orders WITH KEY po_uuid = order-POUUID TRANSPORTING NO FIELDS.
       IF sy-subrc = 0.
+
+        READ TABLE no_cost_center WITH KEY po_uuid = order-POUUID TRANSPORTING NO FIELDS.
+        DATA(msg_text) = COND string(
+          WHEN sy-subrc = 0
+          THEN |No active cost center for branch { order-BranchID } - { order-PONumber } not received|
+          ELSE |Document posting failed for { order-PONumber } - order not received, please retry| ).
+
         APPEND VALUE #( %tky = order-%tky ) TO failed-purchaseorder.
         APPEND VALUE #( %tky = order-%tky
                         %msg = new_message_with_text(
                                  severity = if_abap_behv_message=>severity-error
-                                 text     = |Material document creation failed for { order-PONumber } - order not received, please retry| )
+                                 text     = msg_text )
                       ) TO reported-purchaseorder.
         CONTINUE.
       ENDIF.

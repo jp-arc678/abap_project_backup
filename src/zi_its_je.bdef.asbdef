@@ -32,10 +32,17 @@ authorization master ( global )
 
   field ( mandatory ) PostingDate, DocType, CurrencyCode;
 
-  determination setHeaderDefaults on modify { create; }
-  determination assignJENumber    on save   { create; }
+  determination setHeaderDefaults   on modify { create; }
+  determination assignJENumber      on save   { create; }
 
-  validation validateBalance on save { create; update; }
+  // an entry generated from a sales or purchase document is posted straight
+  // away - it comes from an already approved business document, not from
+  // somebody typing. Runs on save so the lines exist and have passed
+  // feature control by the time the status is set.
+  determination autoPostSystemEntry on save   { create; }
+
+  validation validateBalance       on save { create; update; }
+  validation validateManualCreator on save { create; }
 
   action ( features : instance ) Post result [1] $self;
 
@@ -46,6 +53,7 @@ authorization master ( global )
   draft determine action Prepare
   {
     validation validateBalance;
+    validation validateManualCreator;
     validation JournalEntryItem~validateLine;
   }
 
