@@ -326,7 +326,7 @@ CLASS lhc_JournalEntry IMPLEMENTATION.
 
     READ ENTITIES OF zi_its_je IN LOCAL MODE
       ENTITY JournalEntry
-        FIELDS ( RefDocType PostingStatus )
+        FIELDS ( RefDocType DocType PostingStatus )
         WITH CORRESPONDING #( keys )
       RESULT DATA(entries).
 
@@ -334,7 +334,13 @@ CLASS lhc_JournalEntry IMPLEMENTATION.
 
     LOOP AT entries INTO DATA(entry).
 
-      IF entry-RefDocType <> 'SO' AND entry-RefDocType <> 'PO'.
+      "--- 'OB' = opening balance, written by the opening-balance
+      "    generator. It carries no reference document but is just as
+      "    system-generated as a sale or a goods receipt, and only
+      "    accounting can create one at all (validateManualCreator). ---
+      IF entry-RefDocType <> 'SO'
+     AND entry-RefDocType <> 'PO'
+     AND entry-DocType    <> 'OB'.
         CONTINUE.
       ENDIF.
 
@@ -841,3 +847,4 @@ CLASS lhc_JournalEntry IMPLEMENTATION.
   ENDMETHOD.
 
 ENDCLASS.
+
