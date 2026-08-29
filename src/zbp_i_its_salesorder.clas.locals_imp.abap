@@ -825,7 +825,7 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
     READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
       ENTITY SalesOrder
         FIELDS ( OverallStatus SOUUID SONumber CurrencyCode TotalAmount
-                 BranchID PaymentMethod )
+                 BranchID PaymentMethod SalesDate )
         WITH CORRESPONDING #( keys )
       RESULT DATA(orders).
 
@@ -845,12 +845,23 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
     GET TIME STAMP FIELD DATA(now).
     DATA(today) = cl_abap_context_info=>get_system_date( ).
 
+    "--- Every document this action posts is dated when the sale actually
+    "    happened, not when the button was pressed. Completing a backdated
+    "    order today must not stamp today onto its accounting - the posting
+    "    date has to reflect the business event (standard practice, and the
+    "    reason the generated 3-month history lands in the right periods).
+    "    'today' survives only as the fallback for an order with no date. ---
+    DATA posting_date TYPE d.
+
     "==== 2) เตรียม material document ของทุกรายการก่อน - ยังไม่แตะสต๊อกหรือเปลี่ยนสถานะ ====
     LOOP AT orders INTO DATA(order).
 
       IF order-OverallStatus <> 'C'.
         CONTINUE.
       ENDIF.
+
+      posting_date = COND #( WHEN order-SalesDate IS NOT INITIAL
+                             THEN order-SalesDate ELSE today ).
 
       READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
         ENTITY SalesOrder BY \_Item
@@ -876,7 +887,7 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 
         APPEND VALUE #( %cid         = cid
                         MovementType = zcl_its_movement=>gc_goods_issue
-                        PostingDate  = today
+                        PostingDate  = posting_date
                         BranchID     = order-BranchID
                         ProductID    = item-ProductID
                         Quantity     = item-Quantity * -1   "goods leaving - negative
@@ -969,8 +980,11 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
       DATA(debit_account) = zcl_its_gl_mapping=>get_sales_debit_account( order-PaymentMethod ).
       DATA(je_cid)        = |JE_{ order-SONumber }|.
 
+      posting_date = COND #( WHEN order-SalesDate IS NOT INITIAL
+                             THEN order-SalesDate ELSE today ).
+
       APPEND VALUE #( %cid         = je_cid
-                      PostingDate  = today
+                      PostingDate  = posting_date
                       DocType      = 'RV'
                       BranchID     = order-BranchID
                       HeaderText   = |Sale { order-SONumber }|
@@ -1118,8 +1132,11 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
+      posting_date = COND #( WHEN order-SalesDate IS NOT INITIAL
+                             THEN order-SalesDate ELSE today ).
+
       APPEND VALUE #( %cid         = |LED_{ order-SONumber }|
-                      PostingDate  = today
+                      PostingDate  = posting_date
                       EntryType    = 'I'
                       Amount       = order-TotalAmount
                       CurrencyCode = order-CurrencyCode
