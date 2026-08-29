@@ -23,9 +23,11 @@ define view entity ZI_ITS_TRIAL_BALANCE
 
 {
       @EndUserText.label: 'Branch'
+      @ObjectModel.text.element: [ 'BranchName' ]
   key je.branch_id       as BranchID,
 
       @EndUserText.label: 'GL Account'
+      @ObjectModel.text.element: [ 'AccountName' ]
   key item.gl_account    as GLAccount,
 
       @EndUserText.label: 'Branch Name'
@@ -62,26 +64,56 @@ define view entity ZI_ITS_TRIAL_BALANCE
       // the tested case and debit-normal is the default, so an account
       // with no chart entry still nets debit-minus-credit rather than
       // silently flipping sign.
+      // One SUM over a normal-side-signed amount: postings on the account's
+      // own side count positive, the other side counts negative. Same shape
+      // as the P&L figures, and it collapses what used to be four separate
+      // SUMs into one.
       @EndUserText.label: 'Balance'
       @Semantics.amount.currencyCode: 'CurrencyCode'
-      case when acct.normal_balance = 'C'
-           then sum( case when item.dc_indicator = 'C'
+      sum( case when acct.normal_balance = 'C'
+                then case when item.dc_indicator = 'C'
                           then cast( item.amount as abap.dec(15,2) )
-                          else cast( 0 as abap.dec(15,2) )
-                     end )
-              - sum( case when item.dc_indicator = 'D'
+                          else cast( item.amount as abap.dec(15,2) ) * -1
+                     end
+                else case when item.dc_indicator = 'D'
                           then cast( item.amount as abap.dec(15,2) )
-                          else cast( 0 as abap.dec(15,2) )
-                     end )
-           else sum( case when item.dc_indicator = 'D'
-                          then cast( item.amount as abap.dec(15,2) )
-                          else cast( 0 as abap.dec(15,2) )
-                     end )
-              - sum( case when item.dc_indicator = 'C'
-                          then cast( item.amount as abap.dec(15,2) )
-                          else cast( 0 as abap.dec(15,2) )
-                     end )
-      end                as Balance
+                          else cast( item.amount as abap.dec(15,2) ) * -1
+                     end
+           end ) as Balance,
+
+      // 3 green = the account sits on its own normal side, which is what a
+      // healthy balance looks like. 1 red = it is on the wrong side, which
+      // for a real chart of accounts means something is miscoded. 0 grey =
+      // nets to nothing.
+      //
+      // Because Balance is already normalised above, this is only a sign
+      // test - no second normal_balance lookup needed.
+      @EndUserText.label: 'Balance Criticality'
+      cast(
+        case when sum( case when acct.normal_balance = 'C'
+                            then case when item.dc_indicator = 'C'
+                                      then cast( item.amount as abap.dec(15,2) )
+                                      else cast( item.amount as abap.dec(15,2) ) * -1
+                                 end
+                            else case when item.dc_indicator = 'D'
+                                      then cast( item.amount as abap.dec(15,2) )
+                                      else cast( item.amount as abap.dec(15,2) ) * -1
+                                 end
+                       end ) < 0
+             then 1
+             when sum( case when acct.normal_balance = 'C'
+                            then case when item.dc_indicator = 'C'
+                                      then cast( item.amount as abap.dec(15,2) )
+                                      else cast( item.amount as abap.dec(15,2) ) * -1
+                                 end
+                            else case when item.dc_indicator = 'D'
+                                      then cast( item.amount as abap.dec(15,2) )
+                                      else cast( item.amount as abap.dec(15,2) ) * -1
+                                 end
+                       end ) > 0
+             then 3
+             else 0
+        end as abap.int1 ) as BalanceCriticality
 }
 
 // posted entries only. A draft entry may be unbalanced and can still be

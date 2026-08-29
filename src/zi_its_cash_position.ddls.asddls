@@ -18,6 +18,7 @@ define view entity ZI_ITS_CASH_POSITION
 
 {
       @EndUserText.label: 'Branch'
+      @ObjectModel.text.element: [ 'BranchName' ]
   key je.branch_id      as BranchID,
 
       @EndUserText.label: 'Branch Name'

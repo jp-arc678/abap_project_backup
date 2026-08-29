@@ -24,6 +24,7 @@ define view entity ZI_ITS_PL_BY_BRANCH
 
 {
       @EndUserText.label: 'Branch'
+      @ObjectModel.text.element: [ 'BranchName' ]
   key je.branch_id       as BranchID,
 
       @EndUserText.label: 'Year'
@@ -114,7 +115,37 @@ define view entity ZI_ITS_PL_BY_BRANCH
                           else cast( item.amount as abap.dec(15,2) ) * -1
                      end
                 else cast( 0 as abap.dec(15,2) )
-           end ) as NetProfit
+           end ) as NetProfit,
+
+      // 1 red = the branch lost money that month, 3 green = it made money.
+      // The whole NetProfit expression is restated because CDS cannot
+      // reference an alias from the same select list.
+      @EndUserText.label: 'Net Profit Criticality'
+      cast(
+        case when sum( case when item.gl_account = '400000'
+                            then case when item.dc_indicator = 'C'
+                                      then cast( item.amount as abap.dec(15,2) )
+                                      else cast( item.amount as abap.dec(15,2) ) * -1
+                                 end
+                            else cast( 0 as abap.dec(15,2) )
+                       end )
+                - sum( case when item.gl_account = '500000'
+                            then case when item.dc_indicator = 'D'
+                                      then cast( item.amount as abap.dec(15,2) )
+                                      else cast( item.amount as abap.dec(15,2) ) * -1
+                                 end
+                            else cast( 0 as abap.dec(15,2) )
+                       end )
+                - sum( case when item.gl_account = '600000'
+                            then case when item.dc_indicator = 'D'
+                                      then cast( item.amount as abap.dec(15,2) )
+                                      else cast( item.amount as abap.dec(15,2) ) * -1
+                                 end
+                            else cast( 0 as abap.dec(15,2) )
+                       end ) < 0
+             then 1
+             else 3
+        end as abap.int1 ) as NetProfitCriticality
 }
 
 where je.posting_status = 'P'

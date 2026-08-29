@@ -1,15 +1,36 @@
 @Metadata.layer: #CORE
 
-annotate view ZI_ITS_CASH_POSITION
-    with 
+@UI: {
+  headerInfo: {
+    typeName: 'Branch Cash Position',
+    typeNamePlural: 'Cash Position',
+    title:       { type: #STANDARD, value: 'BranchName' },
+    description: { type: #STANDARD, value: 'RegionID' }
+  }
+}
+
+annotate view ZI_ITS_CASH_POSITION with
 {
-     @UI.facet: [ { id: 'General',
-                 purpose: #STANDARD,
-                 type: #IDENTIFICATION_REFERENCE,
-                 label: 'place holder Details',
-                 position: 10 } ]
-    
-    placeholderid;
-    
-    
+  @UI: { lineItem:       [ { position: 10, importance: #HIGH } ],
+         selectionField: [ { position: 10 } ],
+         textArrangement: #TEXT_FIRST }
+  BranchID;
+
+  @UI.hidden: true
+  BranchName;
+
+  @UI: { lineItem: [ { position: 20, importance: #MEDIUM } ] }
+  RegionID;
+
+  @UI: { lineItem: [ { position: 30, importance: #HIGH } ] }
+  CashBalance;
+
+  @UI: { lineItem: [ { position: 40, importance: #HIGH } ] }
+  BankBalance;
+
+  @UI: { lineItem: [ { position: 50, importance: #HIGH } ] }
+  TotalLiquidity;
+
+  @UI.hidden: true
+  CurrencyCode;
 }

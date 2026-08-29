@@ -1,15 +1,50 @@
 @Metadata.layer: #CORE
 
-annotate view ZI_ITS_PL_BY_BRANCH
-    with 
-{
-     @UI.facet: [ { id: 'General',
-                 purpose: #STANDARD,
-                 type: #IDENTIFICATION_REFERENCE,
-                 label: 'place holder Details',
-                 position: 10 } ]
-    
-    placeholderid;
+@UI: {
+  headerInfo: {
+    typeName: 'Branch Result',
+    typeNamePlural: 'Profit and Loss',
+    title:       { type: #STANDARD, value: 'BranchName' },
+    description: { type: #STANDARD, value: 'PostingYear' }
+  }
+}
 
-    
+annotate view ZI_ITS_PL_BY_BRANCH with
+{
+  @UI: { lineItem:       [ { position: 10, importance: #HIGH } ],
+         selectionField: [ { position: 10 } ],
+         textArrangement: #TEXT_FIRST }
+  BranchID;
+
+  @UI.hidden: true
+  BranchName;
+
+  @UI: { lineItem:       [ { position: 20, importance: #HIGH } ],
+         selectionField: [ { position: 20 } ] }
+  PostingYear;
+
+  @UI: { lineItem:       [ { position: 30, importance: #HIGH } ],
+         selectionField: [ { position: 30 } ] }
+  PostingMonth;
+
+  @UI: { lineItem: [ { position: 40, importance: #HIGH } ] }
+  Revenue;
+
+  @UI: { lineItem: [ { position: 50, importance: #HIGH } ] }
+  CostOfGoodsSold;
+
+  @UI: { lineItem: [ { position: 60, importance: #HIGH } ] }
+  GrossProfit;
+
+  @UI: { lineItem: [ { position: 70, importance: #MEDIUM } ] }
+  OperatingExpense;
+
+  @UI: { lineItem: [ { position: 80, importance: #HIGH, criticality: 'NetProfitCriticality' } ] }
+  NetProfit;
+
+  @UI.hidden: true
+  NetProfitCriticality;
+
+  @UI.hidden: true
+  CurrencyCode;
 }

@@ -1,14 +1,50 @@
 @Metadata.layer: #CORE
 
-annotate view ZI_ITS_TRIAL_BALANCE
-    with 
+@UI: {
+  headerInfo: {
+    typeName: 'Trial Balance Line',
+    typeNamePlural: 'Trial Balance',
+    title:       { type: #STANDARD, value: 'AccountName' },
+    description: { type: #STANDARD, value: 'BranchName' }
+  }
+}
+
+annotate view ZI_ITS_TRIAL_BALANCE with
 {
-     @UI.facet: [ { id: 'General',
-                 purpose: #STANDARD,
-                 type: #IDENTIFICATION_REFERENCE,
-                 label: 'place holder Details',
-                 position: 10 } ]
-    
-    placeholderid;
-    
+  @UI: { lineItem:       [ { position: 10, importance: #HIGH } ],
+         selectionField: [ { position: 10 } ],
+         textArrangement: #TEXT_FIRST }
+  BranchID;
+
+  @UI.hidden: true
+  BranchName;
+
+  @UI: { lineItem:       [ { position: 20, importance: #HIGH } ],
+         selectionField: [ { position: 20 } ],
+         textArrangement: #TEXT_FIRST }
+  GLAccount;
+
+  @UI.hidden: true
+  AccountName;
+
+  @UI: { lineItem: [ { position: 30, importance: #MEDIUM } ] }
+  AccountType;
+
+  @UI.hidden: true
+  NormalBalance;
+
+  @UI: { lineItem: [ { position: 40, importance: #HIGH } ] }
+  TotalDebit;
+
+  @UI: { lineItem: [ { position: 50, importance: #HIGH } ] }
+  TotalCredit;
+
+  @UI: { lineItem: [ { position: 60, importance: #HIGH, criticality: 'BalanceCriticality' } ] }
+  Balance;
+
+  @UI.hidden: true
+  BalanceCriticality;
+
+  @UI.hidden: true
+  CurrencyCode;
 }
