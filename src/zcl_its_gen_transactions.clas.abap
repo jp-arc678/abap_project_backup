@@ -80,6 +80,7 @@ CLASS zcl_its_gen_transactions DEFINITION
     DATA mt_failures TYPE STANDARD TABLE OF string WITH EMPTY KEY.
     DATA mv_seq      TYPE i VALUE 1.
     DATA mv_so_seq   TYPE i VALUE 0.
+    DATA mv_lvl_diff TYPE i VALUE 0.   "predicted vs actual ApprovalLevel
 
     "--- deterministic pseudo-random in 0 .. iv_max-1, so the whole
     "    generated history is reproducible across runs ---
@@ -370,12 +371,17 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
     LOOP AT <lt_rep> ASSIGNING FIELD-SYMBOL(<ls_rep>).
       ASSIGN COMPONENT '%MSG' OF STRUCTURE <ls_rep> TO FIELD-SYMBOL(<lo_msg>).
       IF sy-subrc = 0 AND <lo_msg> IS NOT INITIAL.
-        DATA lo_ref TYPE REF TO if_abap_behv_message.
-        lo_ref ?= <lo_msg>.
-        IF lo_ref IS BOUND.
-          rv_txt = lo_ref->if_message~get_text( ).
-          RETURN.
-        ENDIF.
+        "--- diagnostics only: if the cast ever fails, the run must carry
+        "    on with a blank message rather than dying on a log line ---
+        TRY.
+            DATA lo_ref TYPE REF TO if_abap_behv_message.
+            lo_ref ?= <lo_msg>.
+            IF lo_ref IS BOUND.
+              rv_txt = lo_ref->if_message~get_text( ).
+              RETURN.
+            ENDIF.
+          CATCH cx_sy_move_cast_error.
+        ENDTRY.
       ENDIF.
     ENDLOOP.
 
@@ -445,8 +451,19 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
 
         "--- cap the line so the pool cannot go negative, and keep most
         "    baskets small so the level distribution stays realistic ---
-        DATA(lv_cap) = COND i( WHEN lv_avail > 4 THEN 4 ELSE lv_avail ).
-        DATA(lv_qty) = 1 + next_int( lv_cap ).
+        DATA lv_cap TYPE i.
+        IF lv_avail > 4.
+          lv_cap = 4.
+        ELSE.
+          lv_cap = lv_avail.
+        ENDIF.
+
+        "--- the quantity has to carry the stock quantity type, not plain
+        "    integer. Assigning an I into a packed field is fine, but
+        "    PASSING one to a QUAN(13,3) parameter is not - ABAP checks
+        "    parameter types strictly and will not convert on the way in. ---
+        DATA lv_qty TYPE zits_stock-qty_on_hand.
+        lv_qty = 1 + next_int( lv_cap ).
         IF lv_qty > lv_avail.
           lv_qty = lv_avail.
         ENDIF.
@@ -555,6 +572,28 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
       ENDIF.
       COMMIT ENTITIES.
 
+      "--- The level was predicted from quantity x sale_price so the orders
+      "    could be grouped by approver. Submit has now had the BO compute
+      "    it for real from TotalAmount - trust that, and record any
+      "    disagreement so the smoke test surfaces it.
+      "
+      "    Reading the truth here costs nothing extra: approvals are batched
+      "    into later phases anyway, so routing on the actual level needs no
+      "    additional persona switch. ---
+      SELECT SINGLE FROM zits_so
+        FIELDS approval_level
+        WHERE so_uuid = @lv_uuid
+        INTO @DATA(lv_lvl_raw).
+
+      DATA(lv_actual) = CONV i( lv_lvl_raw ).
+
+      IF lv_actual <> lv_level.
+        mv_lvl_diff = mv_lvl_diff + 1.
+        APPEND |{ is_plan-branch_id } SO #{ lv_idx } LEVEL: predicted { lv_level }, | &&
+               |BO set { lv_actual } (routing follows the BO)| TO mt_failures.
+        lv_level = lv_actual.
+      ENDIF.
+
       bump( iv_branch_id = is_plan-branch_id
             iv_field     = SWITCH string( lv_level WHEN 0 THEN 'lvl0' WHEN 1 THEN 'lvl1' ELSE 'lvl2' ) ).
 
@@ -581,10 +620,16 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
       READ TABLE lt_pending TRANSPORTING NO FIELDS WITH KEY level = lv_want_level.
       IF sy-subrc = 0.
 
-        DATA(lv_switched) = COND #(
-          WHEN lv_want_level = 1
-          THEN zcl_its_switch_persona=>switch_to( iv_role = 'M' iv_branch_id = is_plan-branch_id )
-          ELSE zcl_its_switch_persona=>switch_to( iv_role = 'R' iv_region_id = is_plan-region_id ) ).
+        "--- plain IF, not COND #( ): an inline DATA( ) target gives the
+        "    compiler nothing to infer the # from ---
+        DATA lv_switched TYPE zits_employee-employee_id.
+        IF lv_want_level = 1.
+          lv_switched = zcl_its_switch_persona=>switch_to( iv_role      = 'M'
+                                                           iv_branch_id = is_plan-branch_id ).
+        ELSE.
+          lv_switched = zcl_its_switch_persona=>switch_to( iv_role      = 'R'
+                                                           iv_region_id = is_plan-region_id ).
+        ENDIF.
 
         IF lv_switched IS INITIAL.
           APPEND |{ is_plan-branch_id } SO: no approver for level { lv_want_level }| TO mt_failures.
@@ -746,7 +791,9 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
       DATA lv_date TYPE d.
       lv_date = iv_from + next_int( lv_span / 2 ).   "order early in the period
 
-      DATA(lv_sup) = lt_suppliers[ 1 + next_int( lines( lt_suppliers ) ) ].
+      "--- SELECT ... INTO TABLE @DATA( ) builds a STRUCTURED table even for
+      "    a single field, so the component has to be named explicitly ---
+      DATA(lv_sup) = lt_suppliers[ 1 + next_int( lines( lt_suppliers ) ) ]-partner_id.
       DATA(lv_cid) = |PO_{ is_plan-branch_id }_{ lv_idx }_{ iv_from }|.
 
       DATA po_create TYPE TABLE FOR CREATE zi_its_purchaseorder.
@@ -817,6 +864,22 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
       ENDIF.
       COMMIT ENTITIES.
 
+      "--- same cross-check as on the sales side: route on the level the
+      "    BO actually stamped, not the one predicted from TotalCost ---
+      SELECT SINGLE FROM zits_po
+        FIELDS approval_level
+        WHERE po_uuid = @lv_uuid
+        INTO @DATA(lv_lvl_raw).
+
+      DATA(lv_actual) = CONV i( lv_lvl_raw ).
+
+      IF lv_actual <> lv_level.
+        mv_lvl_diff = mv_lvl_diff + 1.
+        APPEND |{ is_plan-branch_id } PO #{ lv_idx } LEVEL: predicted { lv_level }, | &&
+               |BO set { lv_actual } (routing follows the BO)| TO mt_failures.
+        lv_level = lv_actual.
+      ENDIF.
+
       DATA(lv_kill) = COND abap_bool( WHEN lv_idx MOD ( 100 / gc_reject_pct ) = 0
                                       THEN abap_true ELSE abap_false ).
 
@@ -835,10 +898,14 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
       READ TABLE lt_pending TRANSPORTING NO FIELDS WITH KEY level = lv_want_level.
       IF sy-subrc = 0.
 
-        DATA(lv_switched) = COND #(
-          WHEN lv_want_level = 1
-          THEN zcl_its_switch_persona=>switch_to( iv_role = 'M' iv_branch_id = is_plan-branch_id )
-          ELSE zcl_its_switch_persona=>switch_to( iv_role = 'R' iv_region_id = is_plan-region_id ) ).
+        DATA lv_switched TYPE zits_employee-employee_id.
+        IF lv_want_level = 1.
+          lv_switched = zcl_its_switch_persona=>switch_to( iv_role      = 'M'
+                                                           iv_branch_id = is_plan-branch_id ).
+        ELSE.
+          lv_switched = zcl_its_switch_persona=>switch_to( iv_role      = 'R'
+                                                           iv_region_id = is_plan-region_id ).
+        ENDIF.
 
         IF lv_switched IS INITIAL.
           APPEND |{ is_plan-branch_id } PO: no approver for level { lv_want_level }| TO mt_failures.
@@ -970,6 +1037,16 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
     out->write( |          rejected    : { lv_t_rejected } (on purpose)| ).
     out->write( |          failed      : { lv_t_failed }| ).
     out->write( |Purchase orders created / received : { lv_t_pocre } / { lv_t_porcv } (target { gc_po_total })| ).
+    out->write( || ).
+
+    "--- did the up-front level prediction match what the BO computed? ---
+    IF mv_lvl_diff = 0.
+      out->write( |Approval level prediction: matched the BO on every order.| ).
+    ELSE.
+      out->write( |Approval level prediction: { mv_lvl_diff } MISMATCH(ES) - listed under Failures.| ).
+      out->write( |  Routing already followed the BO's own level, so the orders are correct;| ).
+      out->write( |  the prediction is only used to group orders by approver.| ).
+    ENDIF.
     out->write( || ).
 
     "--- how close the approval spread landed to 70 / 25 / 5 ---
