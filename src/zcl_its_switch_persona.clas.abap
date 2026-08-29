@@ -5,12 +5,63 @@ CLASS zcl_its_switch_persona DEFINITION
 
   PUBLIC SECTION.
     INTERFACES if_oo_adt_classrun.
+
+    "--- Hand the one technical user to a different employee record.
+    "    S / W / M match on branch, R matches on region, A on role alone.
+    "    Returns the employee that now holds the user, or blank when no
+    "    active employee matched. COMMITs, so never call it while a RAP
+    "    transaction is open - commit or roll back the EML work first. ---
+    CLASS-METHODS switch_to
+      IMPORTING iv_role            TYPE zits_employee-role_code
+                iv_branch_id       TYPE zits_employee-branch_id OPTIONAL
+                iv_region_id       TYPE zits_employee-region_id OPTIONAL
+      RETURNING VALUE(rv_employee) TYPE zits_employee-employee_id.
+
   PROTECTED SECTION.
   PRIVATE SECTION.
 ENDCLASS.
 
 
 CLASS zcl_its_switch_persona IMPLEMENTATION.
+
+  METHOD switch_to.
+
+    DATA(lv_user) = to_upper( cl_abap_context_info=>get_user_technical_name( ) ).
+
+    "--- release the technical user from every employee record first, so
+    "    only one employee ever owns it (avoids an ambiguous SELECT SINGLE) ---
+    UPDATE zits_employee
+      SET user_name = ''
+      WHERE upper( user_name ) = @lv_user.
+
+    SELECT SINGLE FROM zits_employee
+      FIELDS employee_id
+      WHERE role_code = @iv_role
+        AND is_active = 'X'
+        AND ( ( @iv_role = 'R' AND region_id = @iv_region_id )
+           OR ( @iv_role = 'A' )
+           OR ( @iv_role <> 'R' AND @iv_role <> 'A' AND branch_id = @iv_branch_id ) )
+      INTO @DATA(lv_target).
+
+    IF sy-subrc <> 0.
+      "--- nobody matched: leave the user detached rather than guessing,
+      "    and let the caller decide what that means ---
+      COMMIT WORK.
+      CLEAR rv_employee.
+      RETURN.
+    ENDIF.
+
+    UPDATE zits_employee
+      SET user_name = @lv_user
+      WHERE employee_id = @lv_target.
+
+    COMMIT WORK.
+
+    rv_employee = lv_target.
+
+  ENDMETHOD.
+
+
   METHOD if_oo_adt_classrun~main.
 
 ************************************************************************
@@ -66,25 +117,13 @@ CLASS zcl_its_switch_persona IMPLEMENTATION.
 
 *======================================================================*
 
-    "--- release the technical user from every employee record first ---
-    "    so only one employee ever owns it (avoids ambiguous SELECT SINGLE)
-    UPDATE zits_employee
-      SET user_name = ''
-      WHERE upper( user_name ) = @current_user.
+    "--- the actual switching lives in switch_to( ) so the data generators
+    "    can reuse it instead of duplicating the UPDATE logic ---
+    DATA(lv_employee) = switch_to( iv_role      = lv_role
+                                   iv_branch_id = lv_branch
+                                   iv_region_id = lv_region ).
 
-    "--- find an employee that matches the chosen persona ---
-    "    S/W/M match on branch, R matches on region, A matches on role only
-    SELECT SINGLE FROM zits_employee
-      FIELDS employee_id, employee_name
-      WHERE role_code = @lv_role
-        AND is_active = 'X'
-        AND ( ( @lv_role = 'R' AND region_id = @lv_region )
-           OR ( @lv_role = 'A' )
-           OR ( @lv_role <> 'R' AND @lv_role <> 'A' AND branch_id = @lv_branch ) )
-      INTO @DATA(ls_target).
-
-    IF sy-subrc <> 0.
-      ROLLBACK WORK.
+    IF lv_employee IS INITIAL.
       out->write( |[SWITCH] FAILED - no active employee matches role { lv_role }| &&
                   |{ COND #( WHEN lv_role = 'R' THEN | region { lv_region }|
                             WHEN lv_role = 'A' THEN ''
@@ -93,12 +132,10 @@ CLASS zcl_its_switch_persona IMPLEMENTATION.
       RETURN.
     ENDIF.
 
-    "--- hand the technical user to that employee ---
-    UPDATE zits_employee
-      SET user_name = @current_user
-      WHERE employee_id = @ls_target-employee_id.
-
-    COMMIT WORK.
+    SELECT SINGLE FROM zits_employee
+      FIELDS employee_id, employee_name
+      WHERE employee_id = @lv_employee
+      INTO @DATA(ls_target).
 
 *----------------------------------------------------------------------*
 *  Report what happened

@@ -247,8 +247,16 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
              po_uuid TYPE zits_po-po_uuid,
            END OF ty_je_link.
 
+    "--- the receipt date worked out once per order and reused everywhere,
+    "    so the material document, the journal entry, the ledger row and
+    "    the header all carry the same date ---
+    TYPES: BEGIN OF ty_recv_date,
+             po_uuid   TYPE zits_po-po_uuid,
+             recv_date TYPE d,
+           END OF ty_recv_date.
+
     READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
-      ENTITY PurchaseOrder FIELDS ( OverallStatus POUUID PONumber CurrencyCode TotalCost BranchID )
+      ENTITY PurchaseOrder FIELDS ( OverallStatus POUUID PONumber CurrencyCode TotalCost BranchID OrderDate )
       WITH CORRESPONDING #( keys ) RESULT DATA(orders).
 
     DATA header_updates   TYPE TABLE FOR UPDATE zi_its_purchaseorder.
@@ -263,6 +271,7 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
     DATA je_items         TYPE TABLE FOR CREATE zi_its_je\_Item.
     DATA je_links         TYPE STANDARD TABLE OF ty_je_link WITH EMPTY KEY.
     DATA no_cost_center   TYPE STANDARD TABLE OF ty_order_line WITH EMPTY KEY.
+    DATA recv_dates       TYPE STANDARD TABLE OF ty_recv_date WITH EMPTY KEY.
 
     GET TIME STAMP FIELD DATA(now).
     DATA(today) = cl_abap_context_info=>get_system_date( ).
@@ -270,6 +279,30 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
     "--- เตรียม material document (goods receipt) ของทุกรายการก่อน - ยังไม่แตะสต๊อกหรือเปลี่ยนสถานะ ---
     LOOP AT orders INTO DATA(order).
       IF order-OverallStatus <> 'A'. CONTINUE. ENDIF.
+
+      "--- Goods do not arrive the instant the order is approved, and they
+      "    certainly do not arrive on the day somebody presses Receive for a
+      "    three-month-old order. The receipt lands 3 to 7 days after the
+      "    order was raised, never in the future.
+      "
+      "    The lag is derived from the PO number rather than drawn from a
+      "    random generator, so re-running the history generator produces the
+      "    same dates twice - a reproducible dataset is worth more here than
+      "    true randomness, and it spreads evenly over 3,4,5,6,7 anyway. ---
+      DATA lv_recv_date TYPE d.
+
+      IF order-OrderDate IS INITIAL.
+        lv_recv_date = today.
+      ELSE.
+        DATA(lv_lag) = 3 + ( CONV i( order-PONumber ) MOD 5 ).
+        lv_recv_date = order-OrderDate + lv_lag.
+        IF lv_recv_date > today.
+          lv_recv_date = today.
+        ENDIF.
+      ENDIF.
+
+      APPEND VALUE #( po_uuid   = order-POUUID
+                      recv_date = lv_recv_date ) TO recv_dates.
 
       READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
         ENTITY PurchaseOrder BY \_Item FIELDS ( ProductID Quantity Unit )
@@ -286,7 +319,7 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
 
         APPEND VALUE #( %cid         = cid
                         MovementType = zcl_its_movement=>gc_goods_receipt
-                        PostingDate  = today
+                        PostingDate  = lv_recv_date
                         BranchID     = order-BranchID
                         ProductID    = item-ProductID
                         Quantity     = item-Quantity   "goods arriving - positive
@@ -358,9 +391,12 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
 
       DATA(je_cid) = |JE_{ order-PONumber }|.
 
+      READ TABLE recv_dates WITH KEY po_uuid = order-POUUID INTO DATA(rd_je).
+      DATA(je_posting_date) = COND d( WHEN sy-subrc = 0 THEN rd_je-recv_date ELSE today ).
+
       "--- header ---
       APPEND VALUE #( %cid         = je_cid
-                      PostingDate  = today
+                      PostingDate  = je_posting_date
                       DocType      = 'RE'
                       BranchID     = order-BranchID
                       HeaderText   = |Purchase { order-PONumber }|
@@ -477,12 +513,16 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
+      READ TABLE recv_dates WITH KEY po_uuid = order-POUUID INTO DATA(rd_led).
+      DATA(led_posting_date) = COND d( WHEN sy-subrc = 0 THEN rd_led-recv_date ELSE today ).
+
       APPEND VALUE #( %cid = |LED_{ order-PONumber }|
-                      PostingDate = today  EntryType = 'E'  "Expense!
+                      PostingDate = led_posting_date  EntryType = 'E'  "Expense!
                       Amount = order-TotalCost  CurrencyCode = order-CurrencyCode
                       RefDocType = 'PO'  RefDocNumber = order-PONumber
                       Description = |Restock { order-PONumber }| ) TO ledger_creates.
-      APPEND VALUE #( %tky = order-%tky OverallStatus = 'R' ReceivedDate = today ) TO header_updates.
+      APPEND VALUE #( %tky = order-%tky OverallStatus = 'R'
+                      ReceivedDate = led_posting_date ) TO header_updates.
     ENDLOOP.
 
     IF stock_updates IS NOT INITIAL.
