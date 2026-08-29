@@ -1,0 +1,6 @@
+@EndUserText.label: 'finereporting def'
+define service ZUI_ITS_FINREPORT {
+  expose ZI_ITS_TRIAL_BALANCE as Trialbalance;
+  expose ZI_ITS_PL_BY_BRANCH  as PLbybranch;
+  expose ZI_ITS_CASH_POSITION as Cashposition;
+}
