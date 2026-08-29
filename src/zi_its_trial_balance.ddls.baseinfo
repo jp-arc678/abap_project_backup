@@ -3,7 +3,10 @@
 {
 "FROM":
 [
-"ZITS_GLACCT"
+"ZITS_BRANCH",
+"ZITS_GLACCT",
+"ZITS_JE",
+"ZITS_JEITEM"
 ],
 "ASSOCIATED":
 [],

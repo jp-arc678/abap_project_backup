@@ -1,0 +1,14 @@
+@Metadata.layer: #CORE
+
+annotate view ZI_ITS_TRIAL_BALANCE
+    with 
+{
+     @UI.facet: [ { id: 'General',
+                 purpose: #STANDARD,
+                 type: #IDENTIFICATION_REFERENCE,
+                 label: 'place holder Details',
+                 position: 10 } ]
+    
+    placeholderid;
+    
+}

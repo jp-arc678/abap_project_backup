@@ -1,0 +1,15 @@
+@Metadata.layer: #CORE
+
+annotate view ZI_ITS_CASH_POSITION
+    with 
+{
+     @UI.facet: [ { id: 'General',
+                 purpose: #STANDARD,
+                 type: #IDENTIFICATION_REFERENCE,
+                 label: 'place holder Details',
+                 position: 10 } ]
+    
+    placeholderid;
+    
+    
+}
