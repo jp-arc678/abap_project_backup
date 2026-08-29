@@ -317,3 +317,4 @@ CLASS zcl_its_gen_opening IMPLEMENTATION.
   ENDMETHOD.
 
 ENDCLASS.
+

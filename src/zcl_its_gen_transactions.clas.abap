@@ -388,11 +388,11 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
   ENDMETHOD.
 
 
+
+  METHOD run_sales_batch.
 *======================================================================*
 *  SALES ORDERS
 *======================================================================*
-  METHOD run_sales_batch.
-
     IF iv_count <= 0.
       RETURN.
     ENDIF.
@@ -717,11 +717,11 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
   ENDMETHOD.
 
 
+
+  METHOD run_purchase_batch.
 *======================================================================*
 *  PURCHASE ORDERS
 *======================================================================*
-  METHOD run_purchase_batch.
-
     IF iv_count <= 0.
       RETURN.
     ENDIF.
@@ -992,11 +992,11 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
   ENDMETHOD.
 
 
+
+  METHOD print_summary.
 *======================================================================*
 *  SUMMARY
 *======================================================================*
-  METHOD print_summary.
-
     out->write( || ).
     out->write( |=== SUMMARY ===| ).
     out->write( || ).
@@ -1077,3 +1077,4 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
   ENDMETHOD.
 
 ENDCLASS.
+
