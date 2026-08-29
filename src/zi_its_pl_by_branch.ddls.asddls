@@ -13,22 +13,24 @@
 define view entity ZI_ITS_PL_BY_BRANCH
   as select from zits_jeitem as item
 
-    inner join      zits_je     as je     on  je.je_uuid = item.parent_uuid
-    left outer join zits_branch as branch on  branch.branch_id = je.branch_id
+    inner join      zits_je       as je     on  je.je_uuid   = item.parent_uuid
+
+    // the period comes from ZI_ITS_JE_BASE rather than being computed here:
+    // GROUP BY accepts only plain field references, so the year and month
+    // have to already be fields before this view can group on them
+    inner join      ZI_ITS_JE_BASE as period on period.JEUUID = item.parent_uuid
+
+    left outer join zits_branch   as branch on  branch.branch_id = je.branch_id
 
 {
       @EndUserText.label: 'Branch'
-  key je.branch_id as BranchID,
+  key je.branch_id       as BranchID,
 
-      // ABAP CDS has no EXTRACT_YEAR / EXTRACT_MONTH for abap.dats - the
-      // DATS_* functions only add days/months or compare. A DATS is
-      // YYYYMMDD, so casting it to CHAR(8) and slicing is the portable way
-      // to get period keys, and it sorts correctly as NUMC.
       @EndUserText.label: 'Year'
-  key cast( substring( cast( je.posting_date as abap.char( 8 ) ), 1, 4 ) as abap.numc( 4 ) ) as PostingYear,
+  key period.PostingYear  as PostingYear,
 
       @EndUserText.label: 'Month'
-  key cast( substring( cast( je.posting_date as abap.char( 8 ) ), 5, 2 ) as abap.numc( 2 ) ) as PostingMonth,
+  key period.PostingMonth as PostingMonth,
 
       @EndUserText.label: 'Branch Name'
       branch.branch_name as BranchName,
@@ -119,7 +121,7 @@ where je.posting_status = 'P'
 
 group by
   je.branch_id,
-  cast( substring( cast( je.posting_date as abap.char( 8 ) ), 1, 4 ) as abap.numc( 4 ) ),
-  cast( substring( cast( je.posting_date as abap.char( 8 ) ), 5, 2 ) as abap.numc( 2 ) ),
+  period.PostingYear,
+  period.PostingMonth,
   branch.branch_name,
   je.currency_code
