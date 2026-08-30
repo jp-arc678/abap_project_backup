@@ -54,10 +54,18 @@ define view entity ZI_ITS_BEST_SELLERS
       @Semantics.amount.currencyCode: 'CurrencyCode'
       sum( cast( item.amount as abap.dec(15,2) ) ) as TotalRevenue,
 
-      // what those goods cost us, at the cost snapshotted on the line
+      // What those goods cost us, at the cost snapshotted on the line.
+      //
+      // Both operands are cast to plain decimals BEFORE the multiply, not
+      // after: CDS rejects CURR and QUAN as operands of arithmetic
+      // (hard-won rule 7 - the same reason ZCL_ITS_GEN_OPENING multiplies
+      // qty by cost in ABAP instead of in Open SQL). The outer cast then
+      // brings the dec(28,5) product back to a currency-shaped dec(15,2)
+      // before it is summed.
       @EndUserText.label: 'Total Cost'
       @Semantics.amount.currencyCode: 'CurrencyCode'
-      sum( cast( item.quantity * item.cost_price as abap.dec(15,2) ) ) as TotalCost,
+      sum( cast( cast( item.quantity   as abap.dec(13,3) )
+               * cast( item.cost_price as abap.dec(15,2) ) as abap.dec(15,2) ) ) as TotalCost,
 
       // revenue minus cost. Makes "best seller" mean most profitable, not
       // merely most numerous - a cheap accessory can outsell a laptop on
@@ -65,7 +73,8 @@ define view entity ZI_ITS_BEST_SELLERS
       @EndUserText.label: 'Total Margin'
       @Semantics.amount.currencyCode: 'CurrencyCode'
       sum( cast( item.amount as abap.dec(15,2) ) )
-    - sum( cast( item.quantity * item.cost_price as abap.dec(15,2) ) ) as TotalMargin,
+    - sum( cast( cast( item.quantity   as abap.dec(13,3) )
+               * cast( item.cost_price as abap.dec(15,2) ) as abap.dec(15,2) ) ) as TotalMargin,
 
       // distinct, because one order can carry several lines and this counts
       // orders that contained the product, not lines

@@ -52,8 +52,18 @@ define view entity ZI_ITS_BRANCH_COMPARISON
       @Semantics.amount.currencyCode: 'CurrencyCode'
       sum( cast( item.amount as abap.dec(15,2) ) ) as TotalRevenue,
 
+      // Cast off the QUAN type deliberately. A QUAN element must carry
+      // @Semantics.quantity.unitOfMeasure, and the only honest unit here
+      // would be item.unit - which would have to join the GROUP BY and
+      // split a branch into one row per unit, breaking the one-row-per-
+      // branch contract this view exists to keep.
+      //
+      // A branch-wide unit total mixes products anyway, so it is a rough
+      // count rather than a typed quantity. Every product is currently EA;
+      // if that ever stops being true this figure adds unlike things and
+      // BestSellers (which does keep the unit) is the view to trust.
       @EndUserText.label: 'Total Units Sold'
-      sum( item.quantity ) as TotalUnitsSold,
+      sum( cast( item.quantity as abap.dec(15,3) ) ) as TotalUnitsSold,
 
       // Same guard as ZI_ITS_SALES_BY_BRANCH: a group only exists when at
       // least one order fell into it, so the divisor is always >= 1.
