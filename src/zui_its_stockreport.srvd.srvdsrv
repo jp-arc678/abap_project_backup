@@ -1,0 +1,5 @@
+@EndUserText.label: 'service def for stockreport'
+define service ZUI_ITS_STOCKREPORT {
+  expose ZC_ITS_STOCK                  as CurrentStock;
+  expose ZI_ITS_STOCK_MOVEMENT_SUMMARY as MovementSummary;
+}

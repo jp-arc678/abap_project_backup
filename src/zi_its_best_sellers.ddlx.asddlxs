@@ -8,7 +8,7 @@
     description: { type: #STANDARD, value: 'BranchName' }
   },
   // opens on the best seller by units, as asked
-  presentationVariant: [ { sortOrder: [ { by: 'TotalQuantitySold', direction: #DESC } ] } ]
+  presentationVariant: [ { sortOrder: [ { by: 'TotalMargin', direction: #DESC } ] } ]
 }
 
 annotate view ZI_ITS_BEST_SELLERS with
