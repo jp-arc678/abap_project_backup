@@ -3,7 +3,9 @@
 {
 "FROM":
 [
-"ZITS_STOCK"
+"ZITS_BRANCH",
+"ZITS_MATDOC",
+"ZITS_PRODUCT"
 ],
 "ASSOCIATED":
 [],
