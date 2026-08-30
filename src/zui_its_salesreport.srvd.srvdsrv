@@ -1,0 +1,6 @@
+@EndUserText.label: 'service def for salesreporters'
+define service ZUI_ITS_SALESREPORT {
+  expose ZI_ITS_SALES_BY_BRANCH   as SalesByBranch;
+  expose ZI_ITS_BEST_SELLERS      as BestSellers;
+  expose ZI_ITS_BRANCH_COMPARISON as BranchComparison;
+}

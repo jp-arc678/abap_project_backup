@@ -1,0 +1,13 @@
+@Metadata.layer: #CORE
+annotate entity ZI_ITS_BRANCH_COMPARISON
+    with 
+{
+     @UI.facet: [ { id: 'General',
+                 purpose: #STANDARD,
+                 type: #IDENTIFICATION_REFERENCE,
+                 label: 'place holder Details',
+                 position: 10 } ]
+    
+    placeholderid;
+
+}
