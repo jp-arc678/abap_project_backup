@@ -1,15 +1,52 @@
-@Metadata.layer:  #CORE
+@Metadata.layer: #CORE
 
-annotate entity ZI_ITS_STOCK_MOVEMENT_SUMMARY
-    with 
+@UI: {
+  headerInfo: {
+    typeName: 'Stock Movement Summary',
+    typeNamePlural: 'Stock Movement Summary',
+    title:       { type: #STANDARD, value: 'ProductName' },
+    description: { type: #STANDARD, value: 'BranchName' }
+  },
+  // most recently active branch/product combination first
+  presentationVariant: [ { sortOrder: [ { by: 'LastMovementDate', direction: #DESC } ] } ]
+}
+
+annotate view ZI_ITS_STOCK_MOVEMENT_SUMMARY with
 {
-    @UI.facet: [ { id: 'General',
-                 purpose: #STANDARD,
-                 type: #IDENTIFICATION_REFERENCE,
-                 label: 'place holder Details',
-                 position: 10 } ]
-    
-    placeholderid;
+  @UI: { lineItem:       [ { position: 10, importance: #HIGH } ],
+         selectionField: [ { position: 10 } ],
+         textArrangement: #TEXT_FIRST }
+  BranchID;
 
-    
+  @UI.hidden: true
+  BranchName;
+
+  @UI: { lineItem:       [ { position: 20, importance: #HIGH } ],
+         selectionField: [ { position: 20 } ],
+         textArrangement: #TEXT_FIRST }
+  ProductID;
+
+  @UI.hidden: true
+  ProductName;
+
+  @UI: { lineItem: [ { position: 30, importance: #HIGH } ] }
+  TotalReceived;
+
+  @UI: { lineItem: [ { position: 40, importance: #HIGH } ] }
+  TotalIssued;
+
+  @UI: { lineItem: [ { position: 50, importance: #HIGH } ] }
+  NetMovement;
+
+  @UI: { lineItem: [ { position: 60, importance: #MEDIUM } ] }
+  MovementCount;
+
+  @UI: { lineItem: [ { position: 70, importance: #HIGH } ] }
+  LastMovementDate;
+
+  @UI: { lineItem: [ { position: 80, importance: #LOW } ] }
+  FirstMovementDate;
+
+  @UI: { lineItem: [ { position: 90, importance: #LOW } ] }
+  Unit;
 }
