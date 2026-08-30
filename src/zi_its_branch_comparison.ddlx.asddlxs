@@ -1,13 +1,44 @@
 @Metadata.layer: #CORE
-annotate entity ZI_ITS_BRANCH_COMPARISON
-    with 
-{
-     @UI.facet: [ { id: 'General',
-                 purpose: #STANDARD,
-                 type: #IDENTIFICATION_REFERENCE,
-                 label: 'place holder Details',
-                 position: 10 } ]
-    
-    placeholderid;
 
+@UI: {
+  headerInfo: {
+    typeName: 'Branch',
+    typeNamePlural: 'Branch Comparison',
+    title:       { type: #STANDARD, value: 'BranchName' },
+    description: { type: #STANDARD, value: 'RegionName' }
+  },
+  // strongest branch first - the comparison is the point of the view
+  presentationVariant: [ { sortOrder: [ { by: 'TotalRevenue', direction: #DESC } ] } ]
+}
+
+annotate view ZI_ITS_BRANCH_COMPARISON with
+{
+  @UI: { lineItem:       [ { position: 10, importance: #HIGH } ],
+         selectionField: [ { position: 10 } ],
+         textArrangement: #TEXT_FIRST }
+  BranchID;
+
+  @UI.hidden: true
+  BranchName;
+
+  @UI: { selectionField: [ { position: 20 } ] }
+  RegionID;
+
+  @UI: { lineItem: [ { position: 20, importance: #MEDIUM } ] }
+  RegionName;
+
+  @UI: { lineItem: [ { position: 30, importance: #HIGH } ] }
+  TotalOrders;
+
+  @UI: { lineItem: [ { position: 40, importance: #HIGH } ] }
+  TotalRevenue;
+
+  @UI: { lineItem: [ { position: 50, importance: #HIGH } ] }
+  TotalUnitsSold;
+
+  @UI: { lineItem: [ { position: 60, importance: #MEDIUM } ] }
+  AverageOrderValue;
+
+  @UI.hidden: true
+  CurrencyCode;
 }

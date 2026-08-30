@@ -1,13 +1,48 @@
 @Metadata.layer: #CORE
-annotate entity ZI_ITS_SALES_BY_BRANCH
-    with 
-{
-    @UI.facet: [ { id: 'General',
-                 purpose: #STANDARD,
-                 type: #IDENTIFICATION_REFERENCE,
-                 label: 'place holder Details',
-                 position: 10 } ]
-    
-    placeholderid;
 
+@UI: {
+  headerInfo: {
+    typeName: 'Branch Month',
+    typeNamePlural: 'Sales by Branch',
+    title:       { type: #STANDARD, value: 'BranchName' },
+    description: { type: #STANDARD, value: 'RegionName' }
+  },
+  presentationVariant: [ { sortOrder: [ { by: 'TotalRevenue', direction: #DESC } ] } ]
+}
+
+annotate view ZI_ITS_SALES_BY_BRANCH with
+{
+  @UI: { lineItem:       [ { position: 10, importance: #HIGH } ],
+         selectionField: [ { position: 10 } ],
+         textArrangement: #TEXT_FIRST }
+  BranchID;
+
+  @UI.hidden: true
+  BranchName;
+
+  @UI: { lineItem:       [ { position: 20, importance: #HIGH } ],
+         selectionField: [ { position: 20 } ] }
+  PostingYear;
+
+  @UI: { lineItem:       [ { position: 30, importance: #HIGH } ],
+         selectionField: [ { position: 30 } ] }
+  PostingMonth;
+
+  @UI: { selectionField: [ { position: 40 } ] }
+  RegionID;
+
+  @UI: { lineItem: [ { position: 40, importance: #MEDIUM } ] }
+  RegionName;
+
+  @UI: { lineItem: [ { position: 50, importance: #HIGH } ] }
+  OrderCount;
+
+  @UI: { lineItem: [ { position: 60, importance: #HIGH } ] }
+  TotalRevenue;
+
+  @UI: { lineItem: [ { position: 70, importance: #MEDIUM } ] }
+  AverageOrderValue;
+
+  @UI.hidden: true
+  CurrencyCode;
 }

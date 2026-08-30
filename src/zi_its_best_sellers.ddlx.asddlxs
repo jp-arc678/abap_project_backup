@@ -1,13 +1,55 @@
 @Metadata.layer: #CORE
-annotate entity ZI_ITS_BEST_SELLERS
-    with 
+
+@UI: {
+  headerInfo: {
+    typeName: 'Product Result',
+    typeNamePlural: 'Best Sellers',
+    title:       { type: #STANDARD, value: 'ProductName' },
+    description: { type: #STANDARD, value: 'BranchName' }
+  },
+  // opens on the best seller by units, as asked
+  presentationVariant: [ { sortOrder: [ { by: 'TotalQuantitySold', direction: #DESC } ] } ]
+}
+
+annotate view ZI_ITS_BEST_SELLERS with
 {
-    @UI.facet: [ { id: 'General',
-                 purpose: #STANDARD,
-                 type: #IDENTIFICATION_REFERENCE,
-                 label: 'place holder Details',
-                 position: 10 } ]
-    
-    placeholderid;
-    
+  @UI: { lineItem:       [ { position: 10, importance: #HIGH } ],
+         selectionField: [ { position: 20 } ],
+         textArrangement: #TEXT_FIRST }
+  ProductID;
+
+  @UI.hidden: true
+  ProductName;
+
+  @UI: { lineItem:       [ { position: 20, importance: #HIGH } ],
+         selectionField: [ { position: 10 } ],
+         textArrangement: #TEXT_FIRST }
+  BranchID;
+
+  @UI.hidden: true
+  BranchName;
+
+  @UI: { lineItem:       [ { position: 30, importance: #MEDIUM } ],
+         selectionField: [ { position: 30 } ] }
+  Category;
+
+  @UI: { lineItem: [ { position: 40, importance: #HIGH } ] }
+  TotalQuantitySold;
+
+  @UI: { lineItem: [ { position: 50, importance: #HIGH } ] }
+  TotalRevenue;
+
+  @UI: { lineItem: [ { position: 60, importance: #MEDIUM } ] }
+  TotalCost;
+
+  @UI: { lineItem: [ { position: 70, importance: #HIGH } ] }
+  TotalMargin;
+
+  @UI: { lineItem: [ { position: 80, importance: #MEDIUM } ] }
+  OrderCount;
+
+  @UI.hidden: true
+  Unit;
+  @UI.hidden: true
+  CurrencyCode;
 }
