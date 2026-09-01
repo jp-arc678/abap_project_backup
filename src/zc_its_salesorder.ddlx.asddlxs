@@ -69,10 +69,13 @@ annotate view ZC_ITS_SALESORDER with
          selectionField: [ { position: 47 } ] }
   PaymentMethod;
 
+  // TEXT_ONLY, not TEXT_FIRST: a walk-in has no id, and TEXT_FIRST would
+  // render the empty id as 'Walk-in ()'. The id is still visible in the
+  // value-help popup and still works as a filter.
   @UI: { lineItem:       [ { position: 48, importance: #MEDIUM } ],
          identification: [ { position: 48 } ],
          selectionField: [ { position: 48 } ],
-         textArrangement: #TEXT_FIRST }
+         textArrangement: #TEXT_ONLY }
   CustomerID;
 
   @UI.hidden: true

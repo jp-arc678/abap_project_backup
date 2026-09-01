@@ -39,8 +39,11 @@ annotate view ZC_ITS_PURCHASEORDER with
   @UI.hidden: true
   BranchName;
 
-  @UI: { lineItem: [ { position: 20, importance: #HIGH } ],
-         identification: [ { position: 20 } ] }
+  // the projection already declares SupplierName as the text element;
+  // without an arrangement Fiori showed the bare id
+  @UI: { lineItem:       [ { position: 20, importance: #HIGH } ],
+         identification: [ { position: 20 } ],
+         textArrangement: #TEXT_FIRST }
   SupplierID;
 
   @UI.hidden: true

@@ -15,8 +15,12 @@ define root view entity ZC_ITS_PURCHASEORDER
 
       _Branch.BranchName as BranchName,
 
+      // Filtered to supplier partners only. Pointing this at ZC_ITS_PARTNER
+      // offered the whole list, so a customer could be picked and only
+      // rejected later by validateSupplier - now the wrong choice is simply
+      // not on the menu.
       @ObjectModel.text.element: [ 'SupplierName' ]
-      @Consumption.valueHelpDefinition: [ { entity: { name: 'ZC_ITS_PARTNER', element: 'PartnerID' } } ]
+      @Consumption.valueHelpDefinition: [ { entity: { name: 'ZI_ITS_VH_SUPPLIER', element: 'PartnerID' } } ]
       SupplierID,
 
       _Supplier.PartnerName as SupplierName,

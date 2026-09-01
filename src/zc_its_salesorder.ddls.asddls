@@ -41,7 +41,9 @@ define root view entity ZC_ITS_SALESORDER
       @Consumption.valueHelpDefinition: [ { entity: { name: 'ZI_ITS_VH_CUSTOMER', element: 'PartnerID' } } ]
       CustomerID,
 
-      _Customer.PartnerName as CustomerName,
+      // from _Base, not from _Customer directly: the base view turns a
+      // missing customer into 'Walk-in' instead of leaving it blank
+      _Base.CustomerName as CustomerName,
 
       SalesDate,
       @Semantics.amount.currencyCode: 'CurrencyCode'
