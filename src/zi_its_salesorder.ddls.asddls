@@ -5,6 +5,7 @@ define root view entity ZI_ITS_SALESORDER
   composition [0..*] of ZI_ITS_SALESORDERITEM as _Item
   association [0..1] to ZI_ITS_EMPLOYEE as _Salesperson on $projection.SalespersonID = _Salesperson.EmployeeID
   association [0..1] to ZI_ITS_BRANCH as _Branch on $projection.BranchID = _Branch.BranchID
+  association [0..1] to ZI_ITS_PARTNER as _Customer on $projection.CustomerID = _Customer.PartnerID
   association [1..1] to ZI_ITS_SO_BASE as _Base on $projection.SOUUID = _Base.SOUUID
 {
       @EndUserText.label: 'Sales Order UUID'
@@ -41,6 +42,11 @@ define root view entity ZI_ITS_SALESORDER
       @EndUserText.label: 'Payment Method'
       payment_method        as PaymentMethod,
 
+      // Optional, unlike the purchase order's SupplierID. Blank means a
+      // walk-in sale, which is the normal case for a retail counter.
+      @EndUserText.label: 'Customer'
+      customer_id           as CustomerID,
+
       @EndUserText.label: 'Approved By'
       approved_by           as ApprovedBy,
 
@@ -64,5 +70,6 @@ define root view entity ZI_ITS_SALESORDER
       _Item,
       _Salesperson,
       _Branch,
+      _Customer,
       _Base
 }

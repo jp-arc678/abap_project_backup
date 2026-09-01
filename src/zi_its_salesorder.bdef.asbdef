@@ -28,6 +28,10 @@ authorization master ( global )
   validation validateSalesperson on save { create;         field SalespersonID; }
   validation validateCreatorRole on save { create; }
 
+  // CustomerID is deliberately NOT field ( mandatory ) - a blank customer is
+  // a valid walk-in sale. The validation only bites when one IS entered.
+  validation validateCustomer    on save { create; update; field CustomerID; }
+
   action ( features : instance ) Submit   result [1] $self;
   action ( features : instance ) Approve  result [1] $self;
   action ( features : instance ) Reject   result [1] $self;
@@ -43,6 +47,7 @@ authorization master ( global )
     validation validateBranch;
     validation validateSalesperson;
     validation validateCreatorRole;
+    validation validateCustomer;
     validation SalesOrderItem~validateQuantity;
     validation SalesOrderItem~validateStock;
   }
@@ -59,6 +64,7 @@ authorization master ( global )
     TotalAmount        = total_amount;
     CurrencyCode       = currency_code;
     PaymentMethod      = payment_method;
+    CustomerID         = customer_id;
     ApprovedBy         = approved_by;
     ApprovedAt         = approved_at;
     RejectionReason    = rejection_reason;

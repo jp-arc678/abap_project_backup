@@ -69,6 +69,15 @@ annotate view ZC_ITS_SALESORDER with
          selectionField: [ { position: 47 } ] }
   PaymentMethod;
 
+  @UI: { lineItem:       [ { position: 48, importance: #MEDIUM } ],
+         identification: [ { position: 48 } ],
+         selectionField: [ { position: 48 } ],
+         textArrangement: #TEXT_FIRST }
+  CustomerID;
+
+  @UI.hidden: true
+  CustomerName;
+
   @UI: { lineItem:       [ { position: 50, importance: #LOW } ],
          identification: [ { position: 50 } ],
          selectionField: [ { position: 50 } ] }

@@ -22,6 +22,9 @@ CLASS lhc_SalesOrder DEFINITION INHERITING FROM cl_abap_behavior_handler.
     METHODS validateCreatorRole FOR VALIDATE ON SAVE
       IMPORTING keys FOR SalesOrder~validateCreatorRole.
 
+    METHODS validateCustomer FOR VALIDATE ON SAVE
+      IMPORTING keys FOR SalesOrder~validateCustomer.
+
     METHODS fetchProductData FOR DETERMINE ON MODIFY
       IMPORTING keys FOR SalesOrderItem~fetchProductData.
 
@@ -434,6 +437,55 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
                         %msg = new_message_with_text(
                                  severity = if_abap_behv_message=>severity-error
                                  text     = 'Your user is not linked to an active employee record' )
+                      ) TO reported-salesorder.
+      ENDIF.
+
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+*--------------------------------------------------------------------*
+* VALIDATION - the customer, when there is one
+*
+* Mirror of PurchaseOrder's validateSupplier, with one deliberate
+* difference: a blank CustomerID is VALID and means a walk-in sale. Most
+* counter sales have no named customer, so this only checks the partner
+* when one was actually chosen.
+*
+* Existence and role are checked, but NOT is_active: a partner can be
+* deactivated after an order was raised, and that must not make the old
+* order impossible to save. The value help already hides inactive
+* partners, so a new order cannot pick one in the first place.
+*--------------------------------------------------------------------*
+  METHOD validateCustomer.
+
+    READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+      ENTITY SalesOrder
+        FIELDS ( CustomerID )
+        WITH CORRESPONDING #( keys )
+      RESULT DATA(orders).
+
+    LOOP AT orders INTO DATA(order).
+
+      "--- walk-in: nothing to check ---
+      IF order-CustomerID IS INITIAL.
+        CONTINUE.
+      ENDIF.
+
+      SELECT SINGLE FROM zits_partner
+        FIELDS partner_id
+        WHERE partner_id = @order-CustomerID
+          AND ( partner_role = 'C' OR partner_role = 'B' )
+        INTO @DATA(existing_customer).
+
+      IF existing_customer IS INITIAL.
+        APPEND VALUE #( %tky = order-%tky ) TO failed-salesorder.
+        APPEND VALUE #( %tky                = order-%tky
+                        %element-CustomerID = if_abap_behv=>mk-on
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = 'Customer does not exist or is not a customer partner' )
                       ) TO reported-salesorder.
       ENDIF.
 

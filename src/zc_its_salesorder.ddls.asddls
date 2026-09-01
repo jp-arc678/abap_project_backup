@@ -34,6 +34,15 @@ define root view entity ZC_ITS_SALESORDER
       // the sale is debited to when the journal entry is posted
       PaymentMethod,
 
+      // Optional. The picker is filtered to customer partners only, unlike
+      // the purchase order's SupplierID which points at the whole partner
+      // list - a sales order should never be able to select a supplier.
+      @ObjectModel.text.element: [ 'CustomerName' ]
+      @Consumption.valueHelpDefinition: [ { entity: { name: 'ZI_ITS_VH_CUSTOMER', element: 'PartnerID' } } ]
+      CustomerID,
+
+      _Customer.PartnerName as CustomerName,
+
       SalesDate,
       @Semantics.amount.currencyCode: 'CurrencyCode'
       TotalAmount,
