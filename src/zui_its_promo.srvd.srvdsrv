@@ -1,0 +1,4 @@
+@EndUserText.label: 'service def for promotions'
+define service ZUI_ITS_PROMO {
+  expose ZI_ITS_PROMO as Promotions;
+}

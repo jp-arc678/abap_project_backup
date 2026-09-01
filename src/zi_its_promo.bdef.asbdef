@@ -1,0 +1,22 @@
+managed implementation in class zbp_i_its_promo unique;
+strict ( 2 );
+with draft;
+define behavior for ZI_ITS_PROMO alias promotion
+persistent table zits_promo
+draft table zits_promo_d
+lock master total etag LastChangedAt
+etag master LocalLastChangedAt
+authorization master ( global )
+//etag master <field_name>
+{
+  create ( authorization : global );
+  update;
+  delete;
+  field ( readonly ) PromoId;
+
+  draft action Activate optimized;
+  draft action Discard;
+  draft action Edit;
+  draft action Resume;
+  draft determine action Prepare;
+}
