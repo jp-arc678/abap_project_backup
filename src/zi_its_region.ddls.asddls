@@ -16,6 +16,7 @@ define root view entity ZI_ITS_REGION
       region_manager_id    as RegionManagerID,
 
       @EndUserText.label: 'Active'
+      @Semantics.booleanIndicator: true
       is_active            as IsActive,
 
       @EndUserText.label: 'Created By'

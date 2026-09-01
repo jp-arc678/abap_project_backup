@@ -33,6 +33,7 @@ define root view entity ZI_ITS_EMPLOYEE
       user_name             as UserName,
 
       @EndUserText.label: 'Active'
+      @Semantics.booleanIndicator: true
       is_active             as IsActive,
 
       @EndUserText.label: 'Created By'

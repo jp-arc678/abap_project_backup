@@ -26,6 +26,7 @@ define root view entity ZI_ITS_COMPANY
       phone                 as Phone,
 
       @EndUserText.label: 'Active'
+      @Semantics.booleanIndicator: true
       is_active             as IsActive,
 
       @EndUserText.label: 'Created By'

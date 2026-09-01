@@ -16,6 +16,7 @@ define root view entity ZI_ITS_COSTCTR
       cc_type              as CCType,
 
       @EndUserText.label: 'Active'
+      @Semantics.booleanIndicator: true
       is_active            as IsActive,
 
       @EndUserText.label: 'Created By'
