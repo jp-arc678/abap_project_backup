@@ -466,6 +466,19 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
 
     "--- ตัดสต๊อกเฉพาะรายการของใบที่ไม่ได้อยู่ใน failed_orders ---
     "    goods receipt: update stock if a row exists for this branch+product, else create it
+    "
+    " Totalled per branch+product first, for the same reason as SalesOrder
+    " Complete: two lines can order the same product, they each get their own
+    " material document but share ONE stock row, and EML refuses two UPDATE
+    " (or two CREATE) entries for the same instance - CC/C:DUPLICATE_UPDATE.
+    TYPES: BEGIN OF ty_stock_need,
+             branch_id  TYPE zits_stock-branch_id,
+             product_id TYPE zits_stock-product_id,
+             quantity   TYPE zits_stock-qty_on_hand,
+             cid        TYPE string,
+           END OF ty_stock_need.
+    DATA stock_needs TYPE STANDARD TABLE OF ty_stock_need WITH EMPTY KEY.
+
     LOOP AT pending_receipts INTO DATA(pending).
 
       READ TABLE failed_orders WITH KEY po_uuid = pending-po_uuid TRANSPORTING NO FIELDS.
@@ -473,20 +486,39 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
+      READ TABLE stock_needs ASSIGNING FIELD-SYMBOL(<need>)
+        WITH KEY branch_id  = pending-branch_id
+                 product_id = pending-product_id.
+
+      IF sy-subrc = 0.
+        <need>-quantity = <need>-quantity + pending-quantity.
+      ELSE.
+        "--- the first line's cid seeds the %cid, so a newly created stock
+        "    row still has a unique one ---
+        APPEND VALUE #( branch_id  = pending-branch_id
+                        product_id = pending-product_id
+                        quantity   = pending-quantity
+                        cid        = pending-cid ) TO stock_needs.
+      ENDIF.
+
+    ENDLOOP.
+
+    LOOP AT stock_needs INTO DATA(need).
+
       SELECT SINGLE FROM zits_stock FIELDS qty_on_hand
-        WHERE branch_id  = @pending-branch_id
-          AND product_id = @pending-product_id
+        WHERE branch_id  = @need-branch_id
+          AND product_id = @need-product_id
         INTO @DATA(current_stock).
 
       IF sy-subrc = 0.
-        APPEND VALUE #( %key-BranchID  = pending-branch_id
-                        %key-ProductID = pending-product_id
-                        QtyOnHand      = current_stock + pending-quantity ) TO stock_updates.
+        APPEND VALUE #( %key-BranchID  = need-branch_id
+                        %key-ProductID = need-product_id
+                        QtyOnHand      = current_stock + need-quantity ) TO stock_updates.
       ELSE.
-        APPEND VALUE #( %cid      = |STK_{ pending-cid }|
-                        BranchID  = pending-branch_id
-                        ProductID = pending-product_id
-                        QtyOnHand = pending-quantity ) TO stock_creates.
+        APPEND VALUE #( %cid      = |STK_{ need-cid }|
+                        BranchID  = need-branch_id
+                        ProductID = need-product_id
+                        QtyOnHand = need-quantity ) TO stock_creates.
       ENDIF.
     ENDLOOP.
 

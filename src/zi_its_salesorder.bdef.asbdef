@@ -44,9 +44,15 @@ authorization master ( global )
   // a valid walk-in sale. The validation only bites when one IS entered.
   validation validateCustomer    on save { create; update; field CustomerID; }
 
-  // Order-level promotion: type, validity and threshold. Optional field,
-  // so it only bites when a promotion was actually chosen.
-  validation validateOrderPromo  on save { create; update; field PromoID; }
+  // Order-level promotion: type, validity and threshold.
+  //
+  // Deliberately NOT triggered on plain "update". Listing update; makes it
+  // fire on EVERY header change - including the status writes inside
+  // Submit, Approve and Complete - which re-judges the promotion long
+  // after the sale. A promotion that has since expired would then make an
+  // already-approved order impossible to complete. Same snapshot principle
+  // as CostPrice: judged when chosen, not re-judged forever after.
+  validation validateOrderPromo  on save { create; field PromoID; }
 
   action ( features : instance ) Submit   result [1] $self;
   action ( features : instance ) Approve  result [1] $self;
@@ -124,7 +130,8 @@ authorization master ( global )
    determination calcTotalAmount   on modify { field Quantity, SalePrice, PromoID; create; delete;}
    validation validateQuantity on save { create; update; field Quantity; }
    validation validateStock on save { create; update; field ProductID, Quantity; }
-   validation validateItemPromo on save { create; update; field PromoID; }
+   // same reasoning as validateOrderPromo on the header
+   validation validateItemPromo on save { create; field PromoID; }
    mapping for zits_soitem
    {
      SOItemUUID         = soitem_uuid;

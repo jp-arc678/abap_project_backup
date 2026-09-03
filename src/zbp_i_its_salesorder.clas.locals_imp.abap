@@ -1550,6 +1550,23 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
     ENDIF.
 
     "==== 5) ตัดสต๊อกเฉพาะรายการของใบที่ไม่ได้อยู่ใน failed_orders ====
+    "
+    " Several lines can point at the SAME product - an order may legitimately
+    " list one product twice, and two orders in the same batch can both sell
+    " it. Each line still gets its own material document (one document per
+    " movement, that is the whole point of them), but they all share ONE
+    " stock row, and EML rejects two UPDATE entries for the same instance
+    " with CC/C:DUPLICATE_UPDATE.
+    "
+    " So the quantities are totalled per branch+product first, then issued
+    " as a single update each.
+    TYPES: BEGIN OF ty_stock_need,
+             branch_id  TYPE zits_stock-branch_id,
+             product_id TYPE zits_stock-product_id,
+             quantity   TYPE zits_stock-qty_on_hand,
+           END OF ty_stock_need.
+    DATA stock_needs TYPE STANDARD TABLE OF ty_stock_need WITH EMPTY KEY.
+
     LOOP AT pending_issues INTO DATA(pending).
 
       READ TABLE failed_orders WITH KEY so_uuid = pending-so_uuid TRANSPORTING NO FIELDS.
@@ -1557,15 +1574,31 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
+      READ TABLE stock_needs ASSIGNING FIELD-SYMBOL(<need>)
+        WITH KEY branch_id  = pending-branch_id
+                 product_id = pending-product_id.
+
+      IF sy-subrc = 0.
+        <need>-quantity = <need>-quantity + pending-quantity.
+      ELSE.
+        APPEND VALUE #( branch_id  = pending-branch_id
+                        product_id = pending-product_id
+                        quantity   = pending-quantity ) TO stock_needs.
+      ENDIF.
+
+    ENDLOOP.
+
+    LOOP AT stock_needs INTO DATA(need).
+
       SELECT SINGLE FROM zits_stock
         FIELDS qty_on_hand
-        WHERE branch_id  = @pending-branch_id
-          AND product_id = @pending-product_id
+        WHERE branch_id  = @need-branch_id
+          AND product_id = @need-product_id
         INTO @DATA(current_stock).
 
-      APPEND VALUE #( %key-BranchID  = pending-branch_id
-                      %key-ProductID = pending-product_id
-                      QtyOnHand      = current_stock - pending-quantity )
+      APPEND VALUE #( %key-BranchID  = need-branch_id
+                      %key-ProductID = need-product_id
+                      QtyOnHand      = current_stock - need-quantity )
              TO stock_updates.
     ENDLOOP.
 
