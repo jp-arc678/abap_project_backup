@@ -15,12 +15,24 @@ authorization master ( global )
   association _Item { create; }
 
   field ( readonly, numbering : managed ) SOUUID;
+  // SubtotalAmount, DiscountPercent and DiscountAmount are computed by
+  // calcTotalAmount / calcOrderDiscount - only PromoID is user input.
   field ( readonly ) SONumber, OrderType, OverallStatus, ApprovalLevel, TotalAmount,
+                     SubtotalAmount, DiscountPercent, DiscountAmount,
                      ApprovedBy, ApprovedAt, SalespersonID, BranchID,
                      CreatedBy, CreatedAt, LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
 
   determination setHeaderDefaults on modify { create; }
   determination assignSONumber on save { create; }
+
+  // The order discount has two ways of becoming stale: the items change
+  // (handled by SalesOrderItem~calcTotalAmount) or the chosen promotion
+  // changes (handled here). Both call the same recalculation, so the two
+  // paths cannot drift apart.
+  //
+  // Triggers on PromoID only - never on SubtotalAmount, DiscountAmount or
+  // TotalAmount, which is what this determination writes (hard-won rule 3).
+  determination calcOrderDiscount on modify { field PromoID; }
 
 
   validation validateItems       on save { create; update; }
@@ -31,6 +43,10 @@ authorization master ( global )
   // CustomerID is deliberately NOT field ( mandatory ) - a blank customer is
   // a valid walk-in sale. The validation only bites when one IS entered.
   validation validateCustomer    on save { create; update; field CustomerID; }
+
+  // Order-level promotion: type, validity and threshold. Optional field,
+  // so it only bites when a promotion was actually chosen.
+  validation validateOrderPromo  on save { create; update; field PromoID; }
 
   action ( features : instance ) Submit   result [1] $self;
   action ( features : instance ) Approve  result [1] $self;
@@ -48,6 +64,8 @@ authorization master ( global )
     validation validateSalesperson;
     validation validateCreatorRole;
     validation validateCustomer;
+    validation validateOrderPromo;
+    validation SalesOrderItem~validateItemPromo;
     validation SalesOrderItem~validateQuantity;
     validation SalesOrderItem~validateStock;
   }
@@ -65,6 +83,10 @@ authorization master ( global )
     CurrencyCode       = currency_code;
     PaymentMethod      = payment_method;
     CustomerID         = customer_id;
+    SubtotalAmount     = subtotal_amount;
+    PromoID            = promo_id;
+    DiscountPercent    = discount_percent;
+    DiscountAmount     = discount_amount;
     ApprovedBy         = approved_by;
     ApprovedAt         = approved_at;
     RejectionReason    = rejection_reason;
@@ -90,11 +112,19 @@ authorization master ( global )
    field ( readonly, numbering : managed ) SOItemUUID;
    // CostPrice is a snapshot of what the product cost at the moment of sale,
    // taken by fetchProductData - never typed, never refreshed afterwards
-   field ( readonly ) ParentUUID, Amount, CostPrice, LocalLastChangedAt;
-   determination fetchProductData on modify { field ProductID, Quantity; }
-   determination calcTotalAmount   on modify { field Quantity, SalePrice; create; delete;}
+   // DiscountPercent and DiscountAmount are computed by fetchProductData
+   // from the chosen promotion - only PromoID is user input.
+   field ( readonly ) ParentUUID, Amount, CostPrice, DiscountPercent, DiscountAmount,
+                      LocalLastChangedAt;
+
+   // PromoID joins the trigger list: choosing or clearing a promotion has
+   // to recompute the line's discount and net Amount, exactly as changing
+   // the quantity does.
+   determination fetchProductData on modify { field ProductID, Quantity, PromoID; }
+   determination calcTotalAmount   on modify { field Quantity, SalePrice, PromoID; create; delete;}
    validation validateQuantity on save { create; update; field Quantity; }
    validation validateStock on save { create; update; field ProductID, Quantity; }
+   validation validateItemPromo on save { create; update; field PromoID; }
    mapping for zits_soitem
    {
      SOItemUUID         = soitem_uuid;
@@ -105,6 +135,9 @@ authorization master ( global )
      Unit               = unit;
      SalePrice          = sale_price;
      CostPrice          = cost_price;
+     PromoID            = promo_id;
+     DiscountPercent    = discount_percent;
+     DiscountAmount     = discount_amount;
      Amount             = amount;
      CurrencyCode       = currency_code;
      LocalLastChangedAt = local_last_changed_at;

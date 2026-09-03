@@ -4,6 +4,7 @@ define view entity ZI_ITS_SALESORDERITEM
   as select from zits_soitem
   association to parent ZI_ITS_SALESORDER as _SalesOrder on $projection.ParentUUID = _SalesOrder.SOUUID
   association [0..1] to ZI_ITS_PRODUCT    as _Product    on $projection.ProductID = _Product.ProductID
+  association [0..1] to ZI_ITS_PROMO      as _Promo      on $projection.PromoID   = _Promo.PromoID
 {
       @EndUserText.label: 'Item UUID'
   key soitem_uuid           as SOItemUUID,
@@ -32,6 +33,18 @@ define view entity ZI_ITS_SALESORDERITEM
       @Semantics.amount.currencyCode: 'CurrencyCode'
       cost_price            as CostPrice,
 
+      // Item-level promotion (type 'I'). Optional - most lines carry none.
+      @EndUserText.label: 'Promotion'
+      promo_id              as PromoID,
+
+      @EndUserText.label: 'Discount %'
+      discount_percent      as DiscountPercent,
+
+      @EndUserText.label: 'Discount Amount'
+      @Semantics.amount.currencyCode: 'CurrencyCode'
+      discount_amount       as DiscountAmount,
+
+      // NET of the item discount: Quantity x SalePrice - DiscountAmount
       @EndUserText.label: 'Amount'
       @Semantics.amount.currencyCode: 'CurrencyCode'
       amount                as Amount,
@@ -43,5 +56,6 @@ define view entity ZI_ITS_SALESORDERITEM
       local_last_changed_at as LocalLastChangedAt,
 
       _SalesOrder,
-      _Product
+      _Product,
+      _Promo
 }

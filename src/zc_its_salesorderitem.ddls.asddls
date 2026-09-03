@@ -19,6 +19,19 @@ define view entity ZC_ITS_SALESORDERITEM
       SalePrice,
       @Semantics.amount.currencyCode: 'CurrencyCode'
       CostPrice,
+
+      // The picker lists every active promotion; validateItemPromo is what
+      // enforces type 'I' and the product match.
+      @ObjectModel.text.element: [ 'PromoName' ]
+      @Consumption.valueHelpDefinition: [ { entity: { name: 'ZI_ITS_VH_PROMO', element: 'PromoID' } } ]
+      PromoID,
+
+      _Promo.PromoName as PromoName,
+
+      DiscountPercent,
+      @Semantics.amount.currencyCode: 'CurrencyCode'
+      DiscountAmount,
+
       @Semantics.amount.currencyCode: 'CurrencyCode'
       Amount,
        @Consumption.valueHelpDefinition: [ { entity: { name: 'I_CurrencyStdVH', element: 'Currency' } } ]

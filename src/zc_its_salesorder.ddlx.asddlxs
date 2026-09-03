@@ -57,6 +57,23 @@ annotate view ZC_ITS_SALESORDER with
          identification: [ { position: 30 } ] }
   SalesDate;
 
+  @UI: { identification: [ { position: 36 } ] }
+  SubtotalAmount;
+
+  @UI: { identification: [ { position: 37 } ],
+         textArrangement: #TEXT_FIRST }
+  PromoID;
+
+  @UI.hidden: true
+  OrderPromoName;
+
+  @UI: { identification: [ { position: 38 } ] }
+  DiscountPercent;
+
+  @UI: { identification: [ { position: 39 } ] }
+  DiscountAmount;
+
+  // stays the prominent total: net of both item and order discounts
   @UI: { lineItem:       [ { position: 40, importance: #HIGH } ],
          identification: [ { position: 40 } ] }
   TotalAmount;

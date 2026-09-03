@@ -25,6 +25,22 @@ CLASS lhc_SalesOrder DEFINITION INHERITING FROM cl_abap_behavior_handler.
     METHODS validateCustomer FOR VALIDATE ON SAVE
       IMPORTING keys FOR SalesOrder~validateCustomer.
 
+    METHODS validateOrderPromo FOR VALIDATE ON SAVE
+      IMPORTING keys FOR SalesOrder~validateOrderPromo.
+
+    METHODS validateItemPromo FOR VALIDATE ON SAVE
+      IMPORTING keys FOR SalesOrderItem~validateItemPromo.
+
+    METHODS calcOrderDiscount FOR DETERMINE ON MODIFY
+      IMPORTING keys FOR SalesOrder~calcOrderDiscount.
+
+    "--- Shared by calcTotalAmount (items changed) and calcOrderDiscount
+    "    (the order's promotion changed). Both need the identical
+    "    subtotal -> order discount -> total chain, so it lives in one
+    "    place and the two entry points cannot drift apart. ---
+    METHODS recalc_header
+      IMPORTING it_headers TYPE TABLE FOR UPDATE zi_its_salesorder.
+
     METHODS fetchProductData FOR DETERMINE ON MODIFY
       IMPORTING keys FOR SalesOrderItem~fetchProductData.
 
@@ -158,7 +174,7 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 
     READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
       ENTITY SalesOrderItem
-        FIELDS ( ProductID Quantity SalePrice CostPrice Unit )
+        FIELDS ( ProductID Quantity SalePrice CostPrice Unit PromoID )
         WITH CORRESPONDING #( keys )
       RESULT DATA(items).
 
@@ -198,22 +214,77 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
         item-CostPrice = product-cost_price.
       ENDIF.
 
-      "--- calculate line amount ---
-      DATA(line_amount) = item-Quantity * item-SalePrice.
+      "--- gross line value, before any promotion ---
+      DATA(gross_amount) = item-Quantity * item-SalePrice.
 
-      APPEND VALUE #( %tky         = item-%tky
-                      Unit         = item-Unit
-                      SalePrice    = item-SalePrice
-                      CostPrice    = item-CostPrice
-                      Amount       = line_amount
-                      CurrencyCode = product-currency_code ) TO updates.
+      "--- Item-level promotion. Only a promotion that is genuinely usable
+      "    on THIS line discounts it: type 'I', active, matching this
+      "    line's product, and live on the order's own sales date.
+      "
+      "    Anything else leaves the line undiscounted rather than guessing.
+      "    That is provisional, not a silent pass: validateItemPromo rejects
+      "    the same cases at save time with a specific message. Computing a
+      "    sane Amount here just stops the UI showing a nonsense total in
+      "    the seconds before the error appears. ---
+      DATA discount_pct TYPE zits_soitem-discount_percent.
+      DATA discount_amt TYPE zits_soitem-discount_amount.
+      CLEAR discount_pct.
+      CLEAR discount_amt.
+
+      IF item-PromoID IS NOT INITIAL.
+
+        "--- the order's sales date decides validity, not today: a
+        "    backdated order must be judged against the promotion that was
+        "    running when the sale happened ---
+        READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+          ENTITY SalesOrderItem BY \_SalesOrder
+            FIELDS ( SalesDate )
+            WITH VALUE #( ( %tky = item-%tky ) )
+          RESULT DATA(parents).
+
+        READ TABLE parents INTO DATA(parent) INDEX 1.
+
+        DATA(effective_date) = COND d( WHEN sy-subrc = 0 AND parent-SalesDate IS NOT INITIAL
+                                       THEN parent-SalesDate
+                                       ELSE cl_abap_context_info=>get_system_date( ) ).
+
+        SELECT SINGLE FROM zits_promo
+          FIELDS promo_type, product_id, discount_percent, is_active, valid_from, valid_to
+          WHERE promo_id = @item-PromoID
+          INTO @DATA(promo).
+
+        IF sy-subrc = 0
+       AND promo-promo_type = 'I'
+       AND promo-is_active  = 'X'
+       AND promo-product_id = item-ProductID
+       AND ( promo-valid_from IS INITIAL OR promo-valid_from <= effective_date )
+       AND ( promo-valid_to   IS INITIAL OR promo-valid_to   >= effective_date ).
+
+          discount_pct = promo-discount_percent.
+          discount_amt = gross_amount * discount_pct / 100.
+
+        ENDIF.
+
+      ENDIF.
+
+      DATA(line_amount) = gross_amount - discount_amt.
+
+      APPEND VALUE #( %tky            = item-%tky
+                      Unit            = item-Unit
+                      SalePrice       = item-SalePrice
+                      CostPrice       = item-CostPrice
+                      DiscountPercent = discount_pct
+                      DiscountAmount  = discount_amt
+                      Amount          = line_amount
+                      CurrencyCode    = product-currency_code ) TO updates.
 
     ENDLOOP.
 
     IF updates IS NOT INITIAL.
       MODIFY ENTITIES OF zi_its_salesorder IN LOCAL MODE
         ENTITY SalesOrderItem
-          UPDATE FIELDS ( Unit SalePrice CostPrice Amount CurrencyCode )
+          UPDATE FIELDS ( Unit SalePrice CostPrice DiscountPercent DiscountAmount
+                          Amount CurrencyCode )
           WITH updates
         REPORTED DATA(rep).
     ENDIF.
@@ -257,9 +328,11 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 *--------------------------------------------------------------------*
 * HEADER - sum item amounts, set order type by threshold
 *--------------------------------------------------------------------*
+*--------------------------------------------------------------------*
+* Items changed - re-run the whole subtotal / discount / total chain
+* for whichever headers those items belong to.
+*--------------------------------------------------------------------*
   METHOD calcTotalAmount.
-
-    DATA total_threshold TYPE p LENGTH 15 DECIMALS 2 VALUE '50000.00'.
 
     "--- from item keys, find their parent header keys ---
     READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
@@ -271,32 +344,139 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
     SORT headers BY %tky.
     DELETE ADJACENT DUPLICATES FROM headers COMPARING %tky.
 
+    DATA header_keys TYPE TABLE FOR UPDATE zi_its_salesorder.
+    LOOP AT headers INTO DATA(header).
+      APPEND VALUE #( %tky = header-%tky ) TO header_keys.
+    ENDLOOP.
+
+    recalc_header( header_keys ).
+
+  ENDMETHOD.
+
+
+*--------------------------------------------------------------------*
+* The order's own promotion changed - same recalculation, different
+* starting point. Triggering on PromoID only, never on what it writes
+* (hard-won rule 3).
+*--------------------------------------------------------------------*
+  METHOD calcOrderDiscount.
+
+    DATA header_keys TYPE TABLE FOR UPDATE zi_its_salesorder.
+    LOOP AT keys INTO DATA(key).
+      APPEND VALUE #( %tky = key-%tky ) TO header_keys.
+    ENDLOOP.
+
+    recalc_header( header_keys ).
+
+  ENDMETHOD.
+
+
+*--------------------------------------------------------------------*
+* THE ORDER TOTAL CHAIN - the one place it is computed.
+*
+*   SubtotalAmount = SUM( item Amount )        already net of item discounts
+*   DiscountAmount = Subtotal x promo percent  order-level promo, if valid
+*   TotalAmount    = Subtotal - DiscountAmount
+*
+* SubtotalAmount exists precisely so an amount-threshold promotion is
+* measured against a figure that does not shrink as its own discount is
+* applied to it.
+*
+* An order promotion that does not qualify leaves the discount at zero
+* here; validateOrderPromo rejects it at save with the reason. Same
+* provisional-then-reject approach as the item side.
+*--------------------------------------------------------------------*
+  METHOD recalc_header.
+
+    DATA total_threshold TYPE p LENGTH 15 DECIMALS 2 VALUE '50000.00'.
+
+    IF it_headers IS INITIAL.
+      RETURN.
+    ENDIF.
+
+    READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+      ENTITY SalesOrder
+        FIELDS ( PromoID SalesDate )
+        WITH CORRESPONDING #( it_headers )
+      RESULT DATA(orders).
+
     DATA updates TYPE TABLE FOR UPDATE zi_its_salesorder.
 
-    LOOP AT headers INTO DATA(header).
+    LOOP AT orders INTO DATA(order).
 
       READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
         ENTITY SalesOrder BY \_Item
-          FIELDS ( Amount )
-          WITH VALUE #( ( %tky = header-%tky ) )
+          FIELDS ( Amount Quantity )
+          WITH VALUE #( ( %tky = order-%tky ) )
         RESULT DATA(items).
 
-      DATA(sum_amount) = REDUCE zits_so-total_amount(
-                           INIT s = CONV zits_so-total_amount( 0 )
-                           FOR it IN items
-                           NEXT s = s + it-Amount ).
+      DATA subtotal TYPE zits_so-subtotal_amount.
+      DATA total_qty TYPE zits_soitem-quantity.
+      CLEAR subtotal.
+      CLEAR total_qty.
 
-      DATA(order_type) = COND #( WHEN sum_amount > total_threshold THEN 'S' ELSE 'N' ).
+      LOOP AT items INTO DATA(item).
+        subtotal  = subtotal  + item-Amount.
+        total_qty = total_qty + item-Quantity.
+      ENDLOOP.
 
-      APPEND VALUE #( %tky        = header-%tky
-                      TotalAmount = sum_amount
-                      OrderType   = order_type ) TO updates.
+      "--- order-level promotion, when one is chosen and qualifies ---
+      DATA discount_pct TYPE zits_so-discount_percent.
+      DATA discount_amt TYPE zits_so-discount_amount.
+      CLEAR discount_pct.
+      CLEAR discount_amt.
+
+      IF order-PromoID IS NOT INITIAL.
+
+        DATA(effective_date) = COND d( WHEN order-SalesDate IS NOT INITIAL
+                                       THEN order-SalesDate
+                                       ELSE cl_abap_context_info=>get_system_date( ) ).
+
+        SELECT SINGLE FROM zits_promo
+          FIELDS promo_type, discount_percent, is_active,
+                 threshold_qty, threshold_amount, valid_from, valid_to
+          WHERE promo_id = @order-PromoID
+          INTO @DATA(promo).
+
+        IF sy-subrc = 0
+       AND promo-is_active = 'X'
+       AND ( promo-valid_from IS INITIAL OR promo-valid_from <= effective_date )
+       AND ( promo-valid_to   IS INITIAL OR promo-valid_to   >= effective_date ).
+
+          "--- 'Q' counts units, 'A' counts money; each measured against
+          "    the threshold its own type defines ---
+          IF ( promo-promo_type = 'Q' AND total_qty >= promo-threshold_qty )
+          OR ( promo-promo_type = 'A' AND subtotal  >= promo-threshold_amount ).
+
+            discount_pct = promo-discount_percent.
+            discount_amt = subtotal * discount_pct / 100.
+
+          ENDIF.
+
+        ENDIF.
+
+      ENDIF.
+
+      DATA total TYPE zits_so-total_amount.
+      total = subtotal - discount_amt.
+
+      "--- the "big order" flag follows the amount actually charged ---
+      DATA(order_type) = COND #( WHEN total > total_threshold THEN 'S' ELSE 'N' ).
+
+      APPEND VALUE #( %tky            = order-%tky
+                      SubtotalAmount  = subtotal
+                      DiscountPercent = discount_pct
+                      DiscountAmount  = discount_amt
+                      TotalAmount     = total
+                      OrderType       = order_type ) TO updates.
+
     ENDLOOP.
 
     IF updates IS NOT INITIAL.
       MODIFY ENTITIES OF zi_its_salesorder IN LOCAL MODE
         ENTITY SalesOrder
-          UPDATE FIELDS ( TotalAmount OrderType )
+          UPDATE FIELDS ( SubtotalAmount DiscountPercent DiscountAmount
+                          TotalAmount OrderType )
           WITH updates
         REPORTED DATA(rep).
     ENDIF.
@@ -487,6 +667,231 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
                                  severity = if_abap_behv_message=>severity-error
                                  text     = 'Customer does not exist or is not a customer partner' )
                       ) TO reported-salesorder.
+      ENDIF.
+
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+*--------------------------------------------------------------------*
+* ITEM PROMOTION - a chosen promotion must genuinely apply to this line.
+*
+* Validity is judged against the ORDER'S SalesDate, not today. A sale
+* that happened in June must be judged against the promotion that was
+* running in June - otherwise re-saving a historical order would fail
+* for a promotion that has since expired, and the generated 3-month
+* history could never be reproduced.
+*
+* Every rejection names its own reason: "wrong type" and "expired" are
+* different mistakes and the salesperson needs to know which one.
+*--------------------------------------------------------------------*
+  METHOD validateItemPromo.
+
+    READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+      ENTITY SalesOrderItem
+        FIELDS ( ProductID PromoID )
+        WITH CORRESPONDING #( keys )
+      RESULT DATA(items).
+
+    LOOP AT items INTO DATA(item).
+
+      "--- no promotion on this line: nothing to check ---
+      IF item-PromoID IS INITIAL.
+        CONTINUE.
+      ENDIF.
+
+      SELECT SINGLE FROM zits_promo
+        FIELDS promo_type, product_id, is_active, valid_from, valid_to
+        WHERE promo_id = @item-PromoID
+        INTO @DATA(promo).
+
+      IF sy-subrc <> 0.
+        APPEND VALUE #( %tky = item-%tky ) TO failed-salesorderitem.
+        APPEND VALUE #( %tky             = item-%tky
+                        %element-PromoID = if_abap_behv=>mk-on
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = 'Promotion does not exist' )
+                      ) TO reported-salesorderitem.
+        CONTINUE.
+      ENDIF.
+
+      IF promo-promo_type <> 'I'.
+        APPEND VALUE #( %tky = item-%tky ) TO failed-salesorderitem.
+        APPEND VALUE #( %tky             = item-%tky
+                        %element-PromoID = if_abap_behv=>mk-on
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = 'This promotion applies to the whole order, not to a single line' )
+                      ) TO reported-salesorderitem.
+        CONTINUE.
+      ENDIF.
+
+      IF promo-is_active <> 'X'.
+        APPEND VALUE #( %tky = item-%tky ) TO failed-salesorderitem.
+        APPEND VALUE #( %tky             = item-%tky
+                        %element-PromoID = if_abap_behv=>mk-on
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = 'Promotion is not active' )
+                      ) TO reported-salesorderitem.
+        CONTINUE.
+      ENDIF.
+
+      IF promo-product_id <> item-ProductID.
+        APPEND VALUE #( %tky = item-%tky ) TO failed-salesorderitem.
+        APPEND VALUE #( %tky             = item-%tky
+                        %element-PromoID = if_abap_behv=>mk-on
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = |Promotion is for product { promo-product_id }, not { item-ProductID }| )
+                      ) TO reported-salesorderitem.
+        CONTINUE.
+      ENDIF.
+
+      "--- the order's own date decides, not today ---
+      READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+        ENTITY SalesOrderItem BY \_SalesOrder
+          FIELDS ( SalesDate )
+          WITH VALUE #( ( %tky = item-%tky ) )
+        RESULT DATA(parents).
+
+      READ TABLE parents INTO DATA(parent) INDEX 1.
+
+      DATA(effective_date) = COND d( WHEN sy-subrc = 0 AND parent-SalesDate IS NOT INITIAL
+                                     THEN parent-SalesDate
+                                     ELSE cl_abap_context_info=>get_system_date( ) ).
+
+      IF ( promo-valid_from IS NOT INITIAL AND promo-valid_from > effective_date )
+      OR ( promo-valid_to   IS NOT INITIAL AND promo-valid_to   < effective_date ).
+        APPEND VALUE #( %tky = item-%tky ) TO failed-salesorderitem.
+        APPEND VALUE #( %tky             = item-%tky
+                        %element-PromoID = if_abap_behv=>mk-on
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = |Promotion is not valid on { effective_date }| )
+                      ) TO reported-salesorderitem.
+      ENDIF.
+
+    ENDLOOP.
+
+  ENDMETHOD.
+
+
+*--------------------------------------------------------------------*
+* ORDER PROMOTION - type 'Q' (enough units) or 'A' (enough money).
+*
+* The threshold is checked against the same figures recalc_header used:
+* total quantity across the items, and SubtotalAmount, which is already
+* net of item-level discounts but before this discount is applied.
+*--------------------------------------------------------------------*
+  METHOD validateOrderPromo.
+
+    READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+      ENTITY SalesOrder
+        FIELDS ( PromoID SalesDate SubtotalAmount )
+        WITH CORRESPONDING #( keys )
+      RESULT DATA(orders).
+
+    LOOP AT orders INTO DATA(order).
+
+      IF order-PromoID IS INITIAL.
+        CONTINUE.
+      ENDIF.
+
+      SELECT SINGLE FROM zits_promo
+        FIELDS promo_type, is_active, threshold_qty, threshold_amount,
+               valid_from, valid_to
+        WHERE promo_id = @order-PromoID
+        INTO @DATA(promo).
+
+      IF sy-subrc <> 0.
+        APPEND VALUE #( %tky = order-%tky ) TO failed-salesorder.
+        APPEND VALUE #( %tky             = order-%tky
+                        %element-PromoID = if_abap_behv=>mk-on
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = 'Promotion does not exist' )
+                      ) TO reported-salesorder.
+        CONTINUE.
+      ENDIF.
+
+      IF promo-promo_type <> 'Q' AND promo-promo_type <> 'A'.
+        APPEND VALUE #( %tky = order-%tky ) TO failed-salesorder.
+        APPEND VALUE #( %tky             = order-%tky
+                        %element-PromoID = if_abap_behv=>mk-on
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = 'This promotion applies to a single line, not to the whole order' )
+                      ) TO reported-salesorder.
+        CONTINUE.
+      ENDIF.
+
+      IF promo-is_active <> 'X'.
+        APPEND VALUE #( %tky = order-%tky ) TO failed-salesorder.
+        APPEND VALUE #( %tky             = order-%tky
+                        %element-PromoID = if_abap_behv=>mk-on
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = 'Promotion is not active' )
+                      ) TO reported-salesorder.
+        CONTINUE.
+      ENDIF.
+
+      DATA(effective_date) = COND d( WHEN order-SalesDate IS NOT INITIAL
+                                     THEN order-SalesDate
+                                     ELSE cl_abap_context_info=>get_system_date( ) ).
+
+      IF ( promo-valid_from IS NOT INITIAL AND promo-valid_from > effective_date )
+      OR ( promo-valid_to   IS NOT INITIAL AND promo-valid_to   < effective_date ).
+        APPEND VALUE #( %tky = order-%tky ) TO failed-salesorder.
+        APPEND VALUE #( %tky             = order-%tky
+                        %element-PromoID = if_abap_behv=>mk-on
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = |Promotion is not valid on { effective_date }| )
+                      ) TO reported-salesorder.
+        CONTINUE.
+      ENDIF.
+
+      "--- threshold: units for 'Q', money for 'A' ---
+      IF promo-promo_type = 'Q'.
+
+        READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+          ENTITY SalesOrder BY \_Item
+            FIELDS ( Quantity )
+            WITH VALUE #( ( %tky = order-%tky ) )
+          RESULT DATA(items).
+
+        DATA total_qty TYPE zits_soitem-quantity.
+        CLEAR total_qty.
+        LOOP AT items INTO DATA(item).
+          total_qty = total_qty + item-Quantity.
+        ENDLOOP.
+
+        IF total_qty < promo-threshold_qty.
+          APPEND VALUE #( %tky = order-%tky ) TO failed-salesorder.
+          APPEND VALUE #( %tky             = order-%tky
+                          %element-PromoID = if_abap_behv=>mk-on
+                          %msg = new_message_with_text(
+                                   severity = if_abap_behv_message=>severity-error
+                                   text     = |Promotion needs at least { promo-threshold_qty } units, this order has { total_qty }| )
+                        ) TO reported-salesorder.
+        ENDIF.
+
+      ELSE.
+
+        IF order-SubtotalAmount < promo-threshold_amount.
+          APPEND VALUE #( %tky = order-%tky ) TO failed-salesorder.
+          APPEND VALUE #( %tky             = order-%tky
+                          %element-PromoID = if_abap_behv=>mk-on
+                          %msg = new_message_with_text(
+                                   severity = if_abap_behv_message=>severity-error
+                                   text     = |Promotion needs a subtotal of at least { promo-threshold_amount }, this order has { order-SubtotalAmount }| )
+                        ) TO reported-salesorder.
+        ENDIF.
+
       ENDIF.
 
     ENDLOOP.

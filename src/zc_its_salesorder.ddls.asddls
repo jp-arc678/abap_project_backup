@@ -46,6 +46,22 @@ define root view entity ZC_ITS_SALESORDER
       _Base.CustomerName as CustomerName,
 
       SalesDate,
+
+      @Semantics.amount.currencyCode: 'CurrencyCode'
+      SubtotalAmount,
+
+      // The picker lists every active promotion; validateOrderPromo is what
+      // enforces type 'Q'/'A' and the threshold.
+      @ObjectModel.text.element: [ 'OrderPromoName' ]
+      @Consumption.valueHelpDefinition: [ { entity: { name: 'ZI_ITS_VH_PROMO', element: 'PromoID' } } ]
+      PromoID,
+
+      _OrderPromo.PromoName as OrderPromoName,
+
+      DiscountPercent,
+      @Semantics.amount.currencyCode: 'CurrencyCode'
+      DiscountAmount,
+
       @Semantics.amount.currencyCode: 'CurrencyCode'
       TotalAmount,
       ApprovedBy,

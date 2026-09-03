@@ -36,6 +36,22 @@ annotate view ZC_ITS_SALESORDERITEM with
   @UI: { identification: [ { position: 45 } ] }
   CostPrice;
 
+  @UI: { lineItem:       [ { position: 44, importance: #MEDIUM } ],
+         identification: [ { position: 44 } ],
+         textArrangement: #TEXT_FIRST }
+  PromoID;
+
+  @UI.hidden: true
+  PromoName;
+
+  @UI: { identification: [ { position: 46 } ] }
+  DiscountPercent;
+
+  @UI: { lineItem:       [ { position: 48, importance: #MEDIUM } ],
+         identification: [ { position: 48 } ] }
+  DiscountAmount;
+
+  // net of the line discount
   @UI: { lineItem:       [ { position: 50, importance: #HIGH } ],
          identification: [ { position: 50 } ] }
   Amount;

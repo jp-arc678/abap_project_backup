@@ -6,6 +6,8 @@ define root view entity ZI_ITS_SALESORDER
   association [0..1] to ZI_ITS_EMPLOYEE as _Salesperson on $projection.SalespersonID = _Salesperson.EmployeeID
   association [0..1] to ZI_ITS_BRANCH as _Branch on $projection.BranchID = _Branch.BranchID
   association [0..1] to ZI_ITS_PARTNER as _Customer on $projection.CustomerID = _Customer.PartnerID
+  // different alias from the item's _Promo: same entity, different relationship
+  association [0..1] to ZI_ITS_PROMO as _OrderPromo on $projection.PromoID = _OrderPromo.PromoID
   association [1..1] to ZI_ITS_SO_BASE as _Base on $projection.SOUUID = _Base.SOUUID
 {
       @EndUserText.label: 'Sales Order UUID'
@@ -32,6 +34,29 @@ define root view entity ZI_ITS_SALESORDER
       @EndUserText.label: 'Sales Date'
       sales_date            as SalesDate,
 
+      // Sum of the item Amounts, which are already net of any item-level
+      // discount. This is what an amount-threshold promotion is measured
+      // against - a stable figure that does not shrink as the order
+      // discount is applied to it.
+      @EndUserText.label: 'Subtotal'
+      @Semantics.amount.currencyCode: 'CurrencyCode'
+      subtotal_amount       as SubtotalAmount,
+
+      // Order-level promotion (type 'Q' or 'A'). Optional and independent
+      // of the item-level ones.
+      @EndUserText.label: 'Order Promotion'
+      promo_id              as PromoID,
+
+      @EndUserText.label: 'Discount %'
+      discount_percent      as DiscountPercent,
+
+      @EndUserText.label: 'Discount Amount'
+      @Semantics.amount.currencyCode: 'CurrencyCode'
+      discount_amount       as DiscountAmount,
+
+      // NET: SubtotalAmount - DiscountAmount. Everything downstream -
+      // approval routing, the journal entry, the sales reports - reads
+      // this field, so they all became post-discount automatically.
       @EndUserText.label: 'Total Amount'
       @Semantics.amount.currencyCode: 'CurrencyCode'
       total_amount          as TotalAmount,
@@ -71,5 +96,6 @@ define root view entity ZI_ITS_SALESORDER
       _Salesperson,
       _Branch,
       _Customer,
+      _OrderPromo,
       _Base
 }
