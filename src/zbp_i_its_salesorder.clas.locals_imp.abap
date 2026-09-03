@@ -1,6 +1,12 @@
 CLASS lhc_SalesOrder DEFINITION INHERITING FROM cl_abap_behavior_handler.
   PRIVATE SECTION.
 
+    "--- The derived type has to be given a name here before it can be used
+    "    as a method parameter: "TYPE TABLE FOR UPDATE ..." is accepted in a
+    "    DATA statement but not inline in METHODS, where the parser stops at
+    "    "TABLE FOR" and reads UPDATE as the start of a new statement. ---
+    TYPES tt_salesorder_update TYPE TABLE FOR UPDATE zi_its_salesorder.
+
     METHODS get_global_authorizations FOR GLOBAL AUTHORIZATION
       IMPORTING REQUEST requested_authorizations FOR SalesOrder RESULT result.
 
@@ -39,7 +45,7 @@ CLASS lhc_SalesOrder DEFINITION INHERITING FROM cl_abap_behavior_handler.
     "    subtotal -> order discount -> total chain, so it lives in one
     "    place and the two entry points cannot drift apart. ---
     METHODS recalc_header
-      IMPORTING it_headers TYPE TABLE FOR UPDATE zi_its_salesorder.
+      IMPORTING it_headers TYPE tt_salesorder_update.
 
     METHODS fetchProductData FOR DETERMINE ON MODIFY
       IMPORTING keys FOR SalesOrderItem~fetchProductData.
@@ -344,7 +350,7 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
     SORT headers BY %tky.
     DELETE ADJACENT DUPLICATES FROM headers COMPARING %tky.
 
-    DATA header_keys TYPE TABLE FOR UPDATE zi_its_salesorder.
+    DATA header_keys TYPE tt_salesorder_update.
     LOOP AT headers INTO DATA(header).
       APPEND VALUE #( %tky = header-%tky ) TO header_keys.
     ENDLOOP.
@@ -361,7 +367,7 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 *--------------------------------------------------------------------*
   METHOD calcOrderDiscount.
 
-    DATA header_keys TYPE TABLE FOR UPDATE zi_its_salesorder.
+    DATA header_keys TYPE tt_salesorder_update.
     LOOP AT keys INTO DATA(key).
       APPEND VALUE #( %tky = key-%tky ) TO header_keys.
     ENDLOOP.
