@@ -1,4 +1,9 @@
-@EndUserText.label: 'service def for promotions'
+@EndUserText.label: 'Service Definition for Promotion'
+
+// Exposed as 'Promotion', not 'Promo'. OData names the entity type
+// <EntitySetName>Type, so 'Promo' would generate 'PromoType' and collide
+// head-on with the PromoType property - a 500 on $metadata (hard-won
+// rule 12, the same trap Partner hit).
 define service ZUI_ITS_PROMO {
-  expose ZI_ITS_PROMO as Promotions;
+  expose ZC_ITS_PROMO as Promotion;
 }

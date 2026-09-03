@@ -2,11 +2,11 @@ projection;
 strict ( 2 );
 use draft;
 
-define behavior for ZC_ITS_PROMO alias promotion
+define behavior for ZC_ITS_PROMO alias Promotion
 {
   use create;
   use update;
-  use delete;
+  // no delete - see the base behaviour definition
 
   use action Activate;
   use action Discard;

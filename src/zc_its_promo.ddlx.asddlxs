@@ -1,15 +1,83 @@
 @Metadata.layer: #CORE
-annotate view ZC_ITS_PROMO
-    with 
+
+@UI: {
+  headerInfo: {
+    typeName: 'Promotion',
+    typeNamePlural: 'Promotions',
+    title:       { type: #STANDARD, value: 'PromoName' },
+    description: { type: #STANDARD, value: 'PromoID' }
+  }
+}
+
+annotate view ZC_ITS_PROMO with
 {
-    @UI.facet: [ { id: 'General',
+  @UI.facet: [ { id: 'General',
                  purpose: #STANDARD,
                  type: #IDENTIFICATION_REFERENCE,
-                 label: 'place holder Details',
+                 label: 'Promotion Details',
                  position: 10 } ]
-    
-    placeholderid;
-    
 
-    
+  @UI: { lineItem:       [ { position: 10, importance: #HIGH } ],
+         identification: [ { position: 10 } ] }
+  PromoID;
+
+  @UI: { lineItem:       [ { position: 20, importance: #HIGH } ],
+         identification: [ { position: 20 } ] }
+  PromoName;
+
+  @UI: { lineItem:       [ { position: 30, importance: #HIGH } ],
+         identification: [ { position: 30 } ],
+         selectionField: [ { position: 10 } ] }
+  PromoType;
+
+  // Shown for every row, not conditionally hidden - it is simply empty on
+  // quantity and amount promotions, which validateTypeFields enforces.
+  @UI: { lineItem:       [ { position: 40, importance: #MEDIUM } ],
+         identification: [ { position: 40 } ],
+         textArrangement: #TEXT_FIRST }
+  ProductID;
+
+  @UI.hidden: true
+  ProductName;
+
+  @UI: { lineItem:       [ { position: 50, importance: #HIGH } ],
+         identification: [ { position: 50 } ] }
+  DiscountPercent;
+
+  //--- qualifying thresholds: detail page only, one applies per type ---
+  @UI: { identification: [ { position: 60 } ] }
+  ThresholdQty;
+
+  @UI: { identification: [ { position: 65 } ] }
+  Unit;
+
+  @UI: { identification: [ { position: 70 } ] }
+  ThresholdAmount;
+
+  @UI: { identification: [ { position: 75 } ] }
+  CurrencyCode;
+
+  @UI: { lineItem:       [ { position: 60, importance: #HIGH } ],
+         identification: [ { position: 80 } ] }
+  ValidFrom;
+
+  @UI: { lineItem:       [ { position: 70, importance: #HIGH } ],
+         identification: [ { position: 85 } ] }
+  ValidTo;
+
+  @UI: { lineItem:       [ { position: 80, importance: #HIGH } ],
+         identification: [ { position: 90 } ],
+         selectionField: [ { position: 20 } ] }
+  IsActive;
+
+  @UI.hidden: true
+  CreatedBy;
+  @UI.hidden: true
+  CreatedAt;
+  @UI.hidden: true
+  LocalLastChangedBy;
+  @UI.hidden: true
+  LocalLastChangedAt;
+  @UI.hidden: true
+  LastChangedAt;
 }

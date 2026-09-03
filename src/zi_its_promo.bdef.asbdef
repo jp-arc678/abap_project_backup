@@ -1,22 +1,75 @@
 managed implementation in class zbp_i_its_promo unique;
 strict ( 2 );
 with draft;
-define behavior for ZI_ITS_PROMO alias promotion
+
+define behavior for ZI_ITS_PROMO alias Promotion
 persistent table zits_promo
 draft table zits_promo_d
 lock master total etag LastChangedAt
 etag master LocalLastChangedAt
 authorization master ( global )
-//etag master <field_name>
 {
-  create ( authorization : global );
+  create;
   update;
-  delete;
-  field ( readonly ) PromoId;
+  // No delete, same reasoning as GLAccount: sales orders will carry PromoID,
+  // and deleting a promotion would leave those orders pointing at nothing.
+  // Deactivate with IsActive = ' ' instead.
 
+  //--- field characteristics ---
+  field ( mandatory : create, readonly : update ) PromoID;
+  field ( mandatory ) PromoName, PromoType, DiscountPercent;
+  field ( readonly ) CreatedBy, CreatedAt, LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
+
+  //--- determinations ---
+  determination setDefaults on modify { create; }
+
+  //--- validations ---
+  // Only branch and regional managers may maintain promotions. This is a
+  // validation rather than a global authorization block on purpose: the
+  // Journal Entry round showed a global block also rejects cross-BO EML,
+  // but a promotion is only ever created by a person in Fiori - nothing
+  // creates one through EML - so the instance-level check is safe here.
+  validation validateCreatorRole    on save { create; update; }
+
+  validation validateType           on save { create; update; field PromoType; }
+  validation validateTypeFields     on save { create; update; field PromoType, ProductID, ThresholdQty, ThresholdAmount; }
+  validation validateDiscountPercent on save { create; update; field DiscountPercent; }
+  validation validateDateRange      on save { create; update; field ValidFrom, ValidTo; }
+  validation validateProduct        on save { create; update; field ProductID; }
+
+  //--- draft actions ---
   draft action Activate optimized;
   draft action Discard;
   draft action Edit;
   draft action Resume;
-  draft determine action Prepare;
+  draft determine action Prepare
+  {
+    validation validateCreatorRole;
+    validation validateType;
+    validation validateTypeFields;
+    validation validateDiscountPercent;
+    validation validateDateRange;
+    validation validateProduct;
+  }
+
+  mapping for zits_promo
+  {
+    PromoID            = promo_id;
+    PromoName          = promo_name;
+    PromoType          = promo_type;
+    ProductID          = product_id;
+    DiscountPercent    = discount_percent;
+    ThresholdQty       = threshold_qty;
+    Unit               = unit;
+    ThresholdAmount    = threshold_amount;
+    CurrencyCode       = currency_code;
+    ValidFrom          = valid_from;
+    ValidTo            = valid_to;
+    IsActive           = is_active;
+    CreatedBy          = created_by;
+    CreatedAt          = created_at;
+    LocalLastChangedBy = local_last_changed_by;
+    LocalLastChangedAt = local_last_changed_at;
+    LastChangedAt      = last_changed_at;
+  }
 }
