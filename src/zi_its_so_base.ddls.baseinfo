@@ -3,6 +3,7 @@
 {
 "FROM":
 [
+"ZITS_PARTNER",
 "ZITS_SO"
 ],
 "ASSOCIATED":
