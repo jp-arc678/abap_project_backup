@@ -74,8 +74,13 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
 
     DATA(current_user) = to_upper( cl_abap_context_info=>get_user_technical_name( ) ).
 
+    "--- may_act: is this order's branch mine to touch at all? Same two-gate
+    "    idea as SalesOrder - reading stays open, acting is scoped. ---
     result = VALUE #( FOR order IN orders
-      LET may_approve = COND abap_bool( WHEN order-OverallStatus = 'P'
+      LET may_act     = zcl_its_approval=>is_in_scope(
+                          iv_user      = current_user
+                          iv_branch_id = order-BranchID )
+          may_approve = COND abap_bool( WHEN order-OverallStatus = 'P'
                                          THEN zcl_its_approval=>can_approve(
                                                 iv_user           = current_user
                                                 iv_branch_id      = order-BranchID
@@ -84,13 +89,13 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
       IN
       ( %tky = order-%tky
         "--- Received is the final state: no more edits or deletion (document principle) ---
-        %update = COND #( WHEN order-OverallStatus = 'R' THEN if_abap_behv=>fc-o-disabled ELSE if_abap_behv=>fc-o-enabled )
-        %delete = COND #( WHEN order-OverallStatus = 'R' THEN if_abap_behv=>fc-o-disabled ELSE if_abap_behv=>fc-o-enabled )
-        %action-Submit  = COND #( WHEN order-OverallStatus = 'D' THEN if_abap_behv=>fc-o-enabled ELSE if_abap_behv=>fc-o-disabled )
+        %update = COND #( WHEN order-OverallStatus = 'R' OR may_act = abap_false THEN if_abap_behv=>fc-o-disabled ELSE if_abap_behv=>fc-o-enabled )
+        %delete = COND #( WHEN order-OverallStatus = 'R' OR may_act = abap_false THEN if_abap_behv=>fc-o-disabled ELSE if_abap_behv=>fc-o-enabled )
+        %action-Submit  = COND #( WHEN order-OverallStatus = 'D' AND may_act = abap_true THEN if_abap_behv=>fc-o-enabled ELSE if_abap_behv=>fc-o-disabled )
         %action-Approve = COND #( WHEN may_approve = abap_true THEN if_abap_behv=>fc-o-enabled ELSE if_abap_behv=>fc-o-disabled )
         %action-Reject  = COND #( WHEN may_approve = abap_true THEN if_abap_behv=>fc-o-enabled ELSE if_abap_behv=>fc-o-disabled )
-        %action-Cancel  = COND #( WHEN order-OverallStatus = 'D' THEN if_abap_behv=>fc-o-enabled ELSE if_abap_behv=>fc-o-disabled )
-        %action-Receive = COND #( WHEN order-OverallStatus = 'A' THEN if_abap_behv=>fc-o-enabled ELSE if_abap_behv=>fc-o-disabled )
+        %action-Cancel  = COND #( WHEN order-OverallStatus = 'D' AND may_act = abap_true THEN if_abap_behv=>fc-o-enabled ELSE if_abap_behv=>fc-o-disabled )
+        %action-Receive = COND #( WHEN order-OverallStatus = 'A' AND may_act = abap_true THEN if_abap_behv=>fc-o-enabled ELSE if_abap_behv=>fc-o-disabled )
       ) ).
   ENDMETHOD.
 
@@ -131,14 +136,20 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
 
       READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
         ENTITY PurchaseOrderItem BY \_PurchaseOrder
-          FIELDS ( OverallStatus )
+          FIELDS ( OverallStatus BranchID )
           WITH VALUE #( ( %tky = item_key-%tky ) )
         RESULT DATA(headers).
 
       READ TABLE headers INTO DATA(header) INDEX 1.
 
-      DATA(is_locked) = COND abap_bool( WHEN sy-subrc = 0 AND header-OverallStatus = 'R'
-                                        THEN abap_true ELSE abap_false ).
+      "--- final, or out of the user's branch scope - see SalesOrder ---
+      DATA(is_locked) = COND abap_bool(
+        WHEN sy-subrc <> 0
+          OR header-OverallStatus = 'R'
+          OR zcl_its_approval=>is_in_scope(
+               iv_user      = to_upper( cl_abap_context_info=>get_user_technical_name( ) )
+               iv_branch_id = header-BranchID ) = abap_false
+        THEN abap_true ELSE abap_false ).
 
       APPEND VALUE #( %tky    = item_key-%tky
                       %update = COND #( WHEN is_locked = abap_true
@@ -276,8 +287,24 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
     DATA(today) = cl_abap_context_info=>get_system_date( ).
 
     "--- เตรียม material document (goods receipt) ของทุกรายการก่อน - ยังไม่แตะสต๊อกหรือเปลี่ยนสถานะ ---
+    DATA(acting_user) = to_upper( cl_abap_context_info=>get_user_technical_name( ) ).
+
     LOOP AT orders INTO DATA(order).
       IF order-OverallStatus <> 'A'. CONTINUE. ENDIF.
+
+      "--- same hard scope check as SalesOrder Complete: receiving goods
+      "    moves stock and posts a journal entry, so the branch rule is
+      "    enforced here and not only on the button ---
+      IF zcl_its_approval=>is_in_scope( iv_user      = acting_user
+                                        iv_branch_id = order-BranchID ) = abap_false.
+        APPEND VALUE #( %tky = order-%tky ) TO failed-purchaseorder.
+        APPEND VALUE #( %tky = order-%tky
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = |{ order-PONumber } belongs to branch { order-BranchID } - you may only receive orders for your own branch| )
+                      ) TO reported-purchaseorder.
+        CONTINUE.
+      ENDIF.
 
       "--- Goods do not arrive the instant the order is approved, and they
       "    certainly do not arrive on the day somebody presses Receive for a

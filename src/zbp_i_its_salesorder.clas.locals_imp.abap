@@ -308,14 +308,22 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 
       READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
         ENTITY SalesOrderItem BY \_SalesOrder
-          FIELDS ( OverallStatus )
+          FIELDS ( OverallStatus BranchID )
           WITH VALUE #( ( %tky = item_key-%tky ) )
         RESULT DATA(headers).
 
       READ TABLE headers INTO DATA(header) INDEX 1.
 
-      DATA(is_locked) = COND abap_bool( WHEN sy-subrc = 0 AND header-OverallStatus = 'F'
-                                        THEN abap_true ELSE abap_false ).
+      "--- locked when the order is final, and equally when it belongs to a
+      "    branch outside the user's scope: the lines have to follow the
+      "    header, or an item could be edited on an order that cannot be ---
+      DATA(is_locked) = COND abap_bool(
+        WHEN sy-subrc <> 0
+          OR header-OverallStatus = 'F'
+          OR zcl_its_approval=>is_in_scope(
+               iv_user      = to_upper( cl_abap_context_info=>get_user_technical_name( ) )
+               iv_branch_id = header-BranchID ) = abap_false
+        THEN abap_true ELSE abap_false ).
 
       APPEND VALUE #( %tky    = item_key-%tky
                       %update = COND #( WHEN is_locked = abap_true
@@ -380,13 +388,17 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 *--------------------------------------------------------------------*
 * THE ORDER TOTAL CHAIN - the one place it is computed.
 *
-*   SubtotalAmount = SUM( item Amount )        already net of item discounts
-*   DiscountAmount = Subtotal x promo percent  order-level promo, if valid
-*   TotalAmount    = Subtotal - DiscountAmount
+*   SubtotalAmount = SUM( Quantity x SalePrice )   GROSS, before any discount
+*   DiscountAmount = line discounts + order discount, all of them
+*   TotalAmount    = SubtotalAmount - DiscountAmount
 *
-* SubtotalAmount exists precisely so an amount-threshold promotion is
-* measured against a figure that does not shrink as its own discount is
-* applied to it.
+* So Subtotal - Discount = Total reads true on screen no matter where the
+* discount came from. An order discounted only on its lines reports that
+* discount at header level too, instead of claiming zero.
+*
+* The order promotion is still measured and calculated on what is owed
+* AFTER the line discounts - an order-level discount applies to the
+* remaining balance, not to the list price.
 *
 * An order promotion that does not qualify leaves the discount at zero
 * here; validateOrderPromo rejects it at save with the reason. Same
@@ -412,25 +424,46 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 
       READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
         ENTITY SalesOrder BY \_Item
-          FIELDS ( Amount Quantity )
+          FIELDS ( Amount DiscountAmount Quantity )
           WITH VALUE #( ( %tky = order-%tky ) )
         RESULT DATA(items).
 
-      DATA subtotal TYPE zits_so-subtotal_amount.
+      "--- Three figures, and the difference between them matters:
+      "
+      "      subtotal   GROSS - what the goods list for, before ANY discount.
+      "                 This is what the header shows as SubtotalAmount, so
+      "                 that Subtotal - Discount = Total always reads true,
+      "                 whether the discount came from a line or the order.
+      "      net_lines  what is owed after the LINE discounts. The order
+      "                 promotion is measured and calculated against this,
+      "                 because an order-level discount applies to what is
+      "                 actually still owed, not to the list price.
+      "      item_disc  the line discounts themselves, which have to be
+      "                 reported at header level too - otherwise an order
+      "                 discounted only on its lines claims a zero discount.
+      DATA subtotal  TYPE zits_so-subtotal_amount.
+      DATA net_lines TYPE zits_so-subtotal_amount.
+      DATA item_disc TYPE zits_so-discount_amount.
       DATA total_qty TYPE zits_soitem-quantity.
       CLEAR subtotal.
+      CLEAR net_lines.
+      CLEAR item_disc.
       CLEAR total_qty.
 
       LOOP AT items INTO DATA(item).
-        subtotal  = subtotal  + item-Amount.
+        net_lines = net_lines + item-Amount.
+        item_disc = item_disc + item-DiscountAmount.
+        subtotal  = subtotal  + item-Amount + item-DiscountAmount.
         total_qty = total_qty + item-Quantity.
       ENDLOOP.
 
       "--- order-level promotion, when one is chosen and qualifies ---
       DATA discount_pct TYPE zits_so-discount_percent.
       DATA discount_amt TYPE zits_so-discount_amount.
+      DATA order_disc   TYPE zits_so-discount_amount.
       CLEAR discount_pct.
       CLEAR discount_amt.
+      CLEAR order_disc.
 
       IF order-PromoID IS NOT INITIAL.
 
@@ -450,12 +483,15 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
        AND ( promo-valid_to   IS INITIAL OR promo-valid_to   >= effective_date ).
 
           "--- 'Q' counts units, 'A' counts money; each measured against
-          "    the threshold its own type defines ---
+          "    the threshold its own type defines. The money test uses
+          "    net_lines, not the gross subtotal, so the threshold and the
+          "    discount are computed on the same base - and so
+          "    validateOrderPromo, which sums the item Amounts, reaches the
+          "    identical figure and cannot disagree with this. ---
           IF ( promo-promo_type = 'Q' AND total_qty >= promo-threshold_qty )
-          OR ( promo-promo_type = 'A' AND subtotal  >= promo-threshold_amount ).
+          OR ( promo-promo_type = 'A' AND net_lines >= promo-threshold_amount ).
 
-            discount_pct = promo-discount_percent.
-            discount_amt = subtotal * discount_pct / 100.
+            order_disc = net_lines * promo-discount_percent / 100.
 
           ENDIF.
 
@@ -463,8 +499,20 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 
       ENDIF.
 
+      "--- the header reports EVERY discount on the order, line-level and
+      "    order-level together, so DiscountAmount matches what the customer
+      "    actually saved ---
+      discount_amt = item_disc + order_disc.
+
       DATA total TYPE zits_so-total_amount.
       total = subtotal - discount_amt.
+
+      "--- the effective rate across the whole order. A single promotion's
+      "    percentage cannot describe an order carrying both a line and an
+      "    order promotion, so this is the rate actually achieved. ---
+      IF subtotal > 0.
+        discount_pct = discount_amt * 100 / subtotal.
+      ENDIF.
 
       "--- the "big order" flag follows the amount actually charged ---
       DATA(order_type) = COND #( WHEN total > total_threshold THEN 'S' ELSE 'N' ).
@@ -788,15 +836,16 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 *--------------------------------------------------------------------*
 * ORDER PROMOTION - type 'Q' (enough units) or 'A' (enough money).
 *
-* The threshold is checked against the same figures recalc_header used:
-* total quantity across the items, and SubtotalAmount, which is already
-* net of item-level discounts but before this discount is applied.
+* The threshold is checked against exactly the figures recalc_header uses:
+* total quantity across the items for 'Q', and the sum of the item Amounts
+* - what is owed after the line discounts - for 'A'. Deliberately NOT the
+* header's SubtotalAmount, which is the gross list value.
 *--------------------------------------------------------------------*
   METHOD validateOrderPromo.
 
     READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
       ENTITY SalesOrder
-        FIELDS ( PromoID SalesDate SubtotalAmount )
+        FIELDS ( PromoID SalesDate )
         WITH CORRESPONDING #( keys )
       RESULT DATA(orders).
 
@@ -888,13 +937,30 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 
       ELSE.
 
-        IF order-SubtotalAmount < promo-threshold_amount.
+        "--- Measured on the sum of the item Amounts - what is still owed
+        "    after the line discounts - NOT on SubtotalAmount, which is the
+        "    gross list value. recalc_header computes the discount on that
+        "    same base, so the two can never disagree about whether an
+        "    order qualifies. ---
+        READ ENTITIES OF zi_its_salesorder IN LOCAL MODE
+          ENTITY SalesOrder BY \_Item
+            FIELDS ( Amount )
+            WITH VALUE #( ( %tky = order-%tky ) )
+          RESULT DATA(amt_items).
+
+        DATA net_lines TYPE zits_so-subtotal_amount.
+        CLEAR net_lines.
+        LOOP AT amt_items INTO DATA(amt_item).
+          net_lines = net_lines + amt_item-Amount.
+        ENDLOOP.
+
+        IF net_lines < promo-threshold_amount.
           APPEND VALUE #( %tky = order-%tky ) TO failed-salesorder.
           APPEND VALUE #( %tky             = order-%tky
                           %element-PromoID = if_abap_behv=>mk-on
                           %msg = new_message_with_text(
                                    severity = if_abap_behv_message=>severity-error
-                                   text     = |Promotion needs a subtotal of at least { promo-threshold_amount }, this order has { order-SubtotalAmount }| )
+                                   text     = |Promotion needs at least { promo-threshold_amount }, this order has { net_lines }| )
                         ) TO reported-salesorder.
         ENDIF.
 
@@ -983,8 +1049,17 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 
     DATA(current_user) = to_upper( cl_abap_context_info=>get_user_technical_name( ) ).
 
+    "--- Two independent gates from here on:
+    "      may_act     - is this order's branch mine to touch at all?
+    "      may_approve - and on top of that, may I sign off this level?
+    "    Every control needs the first; Approve and Reject need both.
+    "    Reading is untouched - other branches stay visible, they just
+    "    cannot be driven from here.
     result = VALUE #( FOR order IN orders
-      LET may_approve = COND abap_bool( WHEN order-OverallStatus = 'P'
+      LET may_act     = zcl_its_approval=>is_in_scope(
+                          iv_user      = current_user
+                          iv_branch_id = order-BranchID )
+          may_approve = COND abap_bool( WHEN order-OverallStatus = 'P'
                                          THEN zcl_its_approval=>can_approve(
                                                 iv_user           = current_user
                                                 iv_branch_id      = order-BranchID
@@ -994,15 +1069,15 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
       ( %tky = order-%tky
 
         "--- Completed is the final state: no more edits or deletion (document principle) ---
-        %update = COND #( WHEN order-OverallStatus = 'F'
+        %update = COND #( WHEN order-OverallStatus = 'F' OR may_act = abap_false
                           THEN if_abap_behv=>fc-o-disabled
                           ELSE if_abap_behv=>fc-o-enabled )
 
-        %delete = COND #( WHEN order-OverallStatus = 'F'
+        %delete = COND #( WHEN order-OverallStatus = 'F' OR may_act = abap_false
                           THEN if_abap_behv=>fc-o-disabled
                           ELSE if_abap_behv=>fc-o-enabled )
 
-        %action-Submit   = COND #( WHEN order-OverallStatus = 'D'
+        %action-Submit   = COND #( WHEN order-OverallStatus = 'D' AND may_act = abap_true
                                    THEN if_abap_behv=>fc-o-enabled
                                    ELSE if_abap_behv=>fc-o-disabled )
 
@@ -1014,11 +1089,12 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
                                    THEN if_abap_behv=>fc-o-enabled
                                    ELSE if_abap_behv=>fc-o-disabled )
 
-        %action-Cancel   = COND #( WHEN order-OverallStatus = 'D' OR order-OverallStatus = 'S'
+        %action-Cancel   = COND #( WHEN ( order-OverallStatus = 'D' OR order-OverallStatus = 'S' )
+                                    AND may_act = abap_true
                                    THEN if_abap_behv=>fc-o-enabled
                                    ELSE if_abap_behv=>fc-o-disabled )
 
-        %action-Complete = COND #( WHEN order-OverallStatus = 'C'
+        %action-Complete = COND #( WHEN order-OverallStatus = 'C' AND may_act = abap_true
                                    THEN if_abap_behv=>fc-o-enabled
                                    ELSE if_abap_behv=>fc-o-disabled )
       ) ).
@@ -1316,9 +1392,26 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
     DATA posting_date TYPE d.
 
     "==== 2) เตรียม material document ของทุกรายการก่อน - ยังไม่แตะสต๊อกหรือเปลี่ยนสถานะ ====
+    DATA(acting_user) = to_upper( cl_abap_context_info=>get_user_technical_name( ) ).
+
     LOOP AT orders INTO DATA(order).
 
       IF order-OverallStatus <> 'C'.
+        CONTINUE.
+      ENDIF.
+
+      "--- Feature control already hides Complete for another branch, but
+      "    that only governs the button. This is the same rule enforced
+      "    where it cannot be routed around, because completing an order
+      "    issues stock and posts a journal entry. ---
+      IF zcl_its_approval=>is_in_scope( iv_user      = acting_user
+                                        iv_branch_id = order-BranchID ) = abap_false.
+        APPEND VALUE #( %tky = order-%tky ) TO failed-salesorder.
+        APPEND VALUE #( %tky = order-%tky
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = |{ order-SONumber } belongs to branch { order-BranchID } - you may only complete orders for your own branch| )
+                      ) TO reported-salesorder.
         CONTINUE.
       ENDIF.
 

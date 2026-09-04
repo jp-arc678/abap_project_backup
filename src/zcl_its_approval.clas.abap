@@ -19,6 +19,21 @@ CLASS zcl_its_approval DEFINITION
       IMPORTING iv_amount       TYPE zits_po-total_cost
       RETURNING VALUE(rv_level) TYPE i.
 
+    "--- Is this branch inside the user's own scope at all?
+    "
+    "    Not a question about approval level - this is the plainer one of
+    "    whether the user has any business acting on a document belonging to
+    "    that branch. Branch roles (M/S/W) match on their own branch, a
+    "    regional manager on any branch in their region, and accounting on
+    "    none: accounting posts journals, it does not run sales orders.
+    "
+    "    Visibility is deliberately NOT restricted by this - everyone can
+    "    still read every branch. Only acting is scoped. ---
+    CLASS-METHODS is_in_scope
+      IMPORTING iv_user      TYPE string
+                iv_branch_id TYPE zits_branch-branch_id
+      RETURNING VALUE(rv_ok) TYPE abap_bool.
+
     "--- can the given user approve a document of iv_required_level for iv_branch_id? ---
     CLASS-METHODS can_approve
       IMPORTING iv_user           TYPE string
@@ -55,6 +70,48 @@ CLASS ZCL_ITS_APPROVAL IMPLEMENTATION.
     ELSE.
       rv_level = 1.
     ENDIF.
+
+  ENDMETHOD.
+
+
+  METHOD is_in_scope.
+
+    rv_ok = abap_false.
+
+    DATA(lv_user) = to_upper( iv_user ).
+
+    SELECT SINGLE FROM zits_employee
+      FIELDS role_code, branch_id, region_id
+      WHERE upper( user_name ) = @lv_user
+        AND is_active = 'X'
+      INTO @DATA(ls_emp).
+
+    IF sy-subrc <> 0.
+      RETURN.
+    ENDIF.
+
+    CASE ls_emp-role_code.
+
+      WHEN 'M' OR 'S' OR 'W'.
+        "--- a branch role acts only on its own branch ---
+        IF ls_emp-branch_id = iv_branch_id.
+          rv_ok = abap_true.
+        ENDIF.
+
+      WHEN 'R'.
+        "--- a regional manager acts on any branch in their region ---
+        SELECT SINGLE FROM zits_branch
+          FIELDS branch_id
+          WHERE branch_id = @iv_branch_id
+            AND region_id = @ls_emp-region_id
+          INTO @DATA(branch_in_region).
+
+        IF branch_in_region IS NOT INITIAL.
+          rv_ok = abap_true.
+        ENDIF.
+
+      "--- 'A' (accounting) and anything else: out of scope ---
+    ENDCASE.
 
   ENDMETHOD.
 
