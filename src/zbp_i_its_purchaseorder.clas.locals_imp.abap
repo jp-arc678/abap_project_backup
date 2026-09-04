@@ -248,8 +248,8 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
            END OF ty_je_link.
 
     "--- the receipt date worked out once per order and reused everywhere,
-    "    so the material document, the journal entry, the ledger row and
-    "    the header all carry the same date ---
+    "    so the material document, the journal entry and the header all
+    "    carry the same date ---
     TYPES: BEGIN OF ty_recv_date,
              po_uuid   TYPE zits_po-po_uuid,
              recv_date TYPE d,
@@ -262,7 +262,6 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
     DATA header_updates   TYPE TABLE FOR UPDATE zi_its_purchaseorder.
     DATA stock_updates    TYPE TABLE FOR UPDATE zi_its_stock.
     DATA stock_creates    TYPE TABLE FOR CREATE zi_its_stock.
-    DATA ledger_creates   TYPE TABLE FOR CREATE zi_its_ledger.
     DATA matdoc_creates   TYPE TABLE FOR CREATE zi_its_matdoc.
     DATA pending_receipts TYPE STANDARD TABLE OF ty_pending_receipt WITH EMPTY KEY.
     DATA failed_cids      TYPE STANDARD TABLE OF ty_cid_line WITH EMPTY KEY.
@@ -522,7 +521,7 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
       ENDIF.
     ENDLOOP.
 
-    "--- เตรียม ledger + เปลี่ยนสถานะ เฉพาะใบที่ไม่ได้อยู่ใน failed_orders ---
+    "--- เปลี่ยนสถานะ เฉพาะใบที่ไม่ได้อยู่ใน failed_orders ---
     "    ใบที่อยู่ใน failed_orders จะรายงาน error กลับไปแทน ให้ผู้ใช้ลองใหม่
     LOOP AT orders INTO order.
       IF order-OverallStatus <> 'A'. CONTINUE. ENDIF.
@@ -548,11 +547,6 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
       READ TABLE recv_dates WITH KEY po_uuid = order-POUUID INTO DATA(rd_led).
       DATA(led_posting_date) = COND d( WHEN sy-subrc = 0 THEN rd_led-recv_date ELSE today ).
 
-      APPEND VALUE #( %cid = |LED_{ order-PONumber }|
-                      PostingDate = led_posting_date  EntryType = 'E'  "Expense!
-                      Amount = order-TotalCost  CurrencyCode = order-CurrencyCode
-                      RefDocType = 'PO'  RefDocNumber = order-PONumber
-                      Description = |Restock { order-PONumber }| ) TO ledger_creates.
       APPEND VALUE #( %tky = order-%tky OverallStatus = 'R'
                       ReceivedDate = led_posting_date ) TO header_updates.
     ENDLOOP.
@@ -564,11 +558,6 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
     IF stock_creates IS NOT INITIAL.
       MODIFY ENTITIES OF zi_its_stock ENTITY Stock
         CREATE FIELDS ( BranchID ProductID QtyOnHand ) WITH stock_creates REPORTED DATA(stock_crt_rep) FAILED DATA(stock_crt_failed).
-    ENDIF.
-    IF ledger_creates IS NOT INITIAL.
-      MODIFY ENTITIES OF zi_its_ledger ENTITY Ledger
-        CREATE FIELDS ( PostingDate EntryType Amount CurrencyCode RefDocType RefDocNumber Description )
-        WITH ledger_creates REPORTED DATA(lr) FAILED DATA(lf).
     ENDIF.
     IF header_updates IS NOT INITIAL.
       MODIFY ENTITIES OF zi_its_purchaseorder IN LOCAL MODE

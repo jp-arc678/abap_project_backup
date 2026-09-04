@@ -1251,7 +1251,7 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 
 *--------------------------------------------------------------------*
 * COMPLETE - salesperson; Confirmed -> Completed
-* (Round 4: จะเพิ่มการตัดสต๊อก + ลง ledger ตรงนี้)
+* (ตัดสต๊อก + สร้าง material document + ลง journal entry ตรงนี้)
 *--------------------------------------------------------------------*
   METHOD Complete.
 
@@ -1294,7 +1294,6 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
 
     DATA header_updates TYPE TABLE FOR UPDATE zi_its_salesorder.
     DATA stock_updates  TYPE TABLE FOR UPDATE zi_its_stock.
-    DATA ledger_creates TYPE TABLE FOR CREATE zi_its_ledger.
     DATA matdoc_creates TYPE TABLE FOR CREATE zi_its_matdoc.
     DATA pending_issues TYPE STANDARD TABLE OF ty_pending_issue WITH EMPTY KEY.
     DATA failed_cids    TYPE STANDARD TABLE OF ty_cid_line WITH EMPTY KEY.
@@ -1602,7 +1601,7 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
              TO stock_updates.
     ENDLOOP.
 
-    "==== 6) เตรียม ledger + เปลี่ยนสถานะ เฉพาะใบที่ไม่ได้อยู่ใน failed_orders ====
+    "==== 6) เปลี่ยนสถานะ เฉพาะใบที่ไม่ได้อยู่ใน failed_orders ====
     "        ใบที่อยู่ใน failed_orders จะรายงาน error กลับไปแทน ให้ผู้ใช้ลองใหม่
     LOOP AT orders INTO order.
 
@@ -1628,19 +1627,6 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
-      posting_date = COND #( WHEN order-SalesDate IS NOT INITIAL
-                             THEN order-SalesDate ELSE today ).
-
-      APPEND VALUE #( %cid         = |LED_{ order-SONumber }|
-                      PostingDate  = posting_date
-                      EntryType    = 'I'
-                      Amount       = order-TotalAmount
-                      CurrencyCode = order-CurrencyCode
-                      RefDocType   = 'SO'
-                      RefDocNumber = order-SONumber
-                      Description  = |Sale { order-SONumber }| )
-             TO ledger_creates.
-
       APPEND VALUE #( %tky          = order-%tky
                       OverallStatus = 'F' ) TO header_updates.
 
@@ -1657,18 +1643,7 @@ CLASS lhc_SalesOrder IMPLEMENTATION.
         FAILED   DATA(stock_failed).
     ENDIF.
 
-    " 7b) สร้าง entry ที่ Ledger BO
-    IF ledger_creates IS NOT INITIAL.
-      MODIFY ENTITIES OF zi_its_ledger
-        ENTITY Ledger
-          CREATE FIELDS ( PostingDate EntryType Amount CurrencyCode
-                          RefDocType RefDocNumber Description )
-          WITH ledger_creates
-        REPORTED DATA(led_rep)
-        FAILED   DATA(led_failed).
-    ENDIF.
-
-    " 7c) อัปเดตสถานะ header ของตัวเอง (local mode)
+    " 7b) อัปเดตสถานะ header ของตัวเอง (local mode)
     IF header_updates IS NOT INITIAL.
       MODIFY ENTITIES OF zi_its_salesorder IN LOCAL MODE
         ENTITY SalesOrder
