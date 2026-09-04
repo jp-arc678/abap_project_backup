@@ -16,7 +16,10 @@ authorization master ( global )
   //--- field characteristics ---
   field ( mandatory : create, readonly : update ) EmployeeID;
   field ( mandatory ) EmployeeName, RoleCode, UserName;
-  field ( readonly ) RoleName, RegionID, CreatedBy, CreatedAt,
+  // RegionID is NOT readonly: a regional manager ('R') is scoped by region
+  // instead of by branch, so it has to be typeable. validateScope is what
+  // decides when it is required and when it must stay empty.
+  field ( readonly ) RoleName, CreatedBy, CreatedAt,
                      LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
 
   //--- determinations ---

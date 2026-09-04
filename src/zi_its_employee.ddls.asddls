@@ -22,11 +22,16 @@ define root view entity ZI_ITS_EMPLOYEE
       role_code             as RoleCode,
 
       @EndUserText.label: 'Role Description'
+      // Every role validateRole accepts must appear here, or the list shows
+      // 'Unknown' for a perfectly valid employee - which is what happened to
+      // regional managers and accounting before this was completed.
       case role_code
-        when 'M' then cast( 'Manager'         as abap.char( 20 ) )
-        when 'S' then cast( 'Salesperson'     as abap.char( 20 ) )
-        when 'W' then cast( 'Warehouse Staff' as abap.char( 20 ) )
-        else          cast( 'Unknown'         as abap.char( 20 ) )
+        when 'M' then cast( 'Branch Manager'   as abap.char( 20 ) )
+        when 'S' then cast( 'Salesperson'      as abap.char( 20 ) )
+        when 'W' then cast( 'Warehouse Staff'  as abap.char( 20 ) )
+        when 'R' then cast( 'Regional Manager' as abap.char( 20 ) )
+        when 'A' then cast( 'Accounting'       as abap.char( 20 ) )
+        else          cast( 'Unknown'          as abap.char( 20 ) )
       end                   as RoleName,
 
       @EndUserText.label: 'System User'

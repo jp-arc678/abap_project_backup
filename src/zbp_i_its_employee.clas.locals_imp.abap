@@ -110,7 +110,7 @@ CLASS lhc_Employee IMPLEMENTATION.
 
     READ ENTITIES OF zi_its_employee IN LOCAL MODE
       ENTITY Employee
-        FIELDS ( EmployeeID RoleCode IsActive )
+        FIELDS ( EmployeeID RoleCode IsActive BranchID )
         WITH CORRESPONDING #( keys )
       RESULT DATA(employees).
 
@@ -132,13 +132,20 @@ CLASS lhc_Employee IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
-      "--- only one active manager in the shop ---
+      "--- one active manager PER BRANCH ---
+      "    This was a company-wide check left over from v1, when there was
+      "    only one shop. Under v2 every branch has its own manager, so the
+      "    unscoped version made it impossible to create a second one -
+      "    the three seeded managers only exist because ZCL_ITS_GEN_EMPLOYEE
+      "    inserts them straight into the table and never passes through
+      "    this BO.
       IF employee-RoleCode = 'M' AND employee-IsActive = 'X'.
 
         SELECT SINGLE FROM zits_employee
           FIELDS employee_id
           WHERE role_code   = 'M'
             AND is_active   = 'X'
+            AND branch_id   = @employee-BranchID
             AND employee_id <> @employee-EmployeeID
           INTO @DATA(other_manager).
 
@@ -148,7 +155,7 @@ CLASS lhc_Employee IMPLEMENTATION.
                           %element-RoleCode = if_abap_behv=>mk-on
                           %msg = new_message_with_text(
                                    severity = if_abap_behv_message=>severity-error
-                                   text     = 'An active manager already exists in this shop' )
+                                   text     = |Branch { employee-BranchID } already has an active manager| )
                         ) TO reported-employee.
         ENDIF.
 

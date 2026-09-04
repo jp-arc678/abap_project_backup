@@ -35,6 +35,17 @@ annotate view ZC_ITS_EMPLOYEE with
   @UI.hidden: true
   BranchName;
 
+  // Region is the scope for a regional manager, exactly as Branch is for a
+  // salesperson. Without it on the screen there was no way to create one.
+  @UI: { lineItem:       [ { position: 33, importance: #HIGH } ],
+         identification: [ { position: 33 } ],
+         selectionField: [ { position: 33 } ],
+         textArrangement: #TEXT_FIRST }
+  RegionID;
+
+  @UI.hidden: true
+  RegionName;
+
   @UI: { lineItem:       [ { position: 35, importance: #HIGH } ],
          identification: [ { position: 35 } ],
          selectionField: [ { position: 35 } ],
