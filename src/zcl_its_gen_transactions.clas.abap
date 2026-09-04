@@ -53,8 +53,23 @@ CLASS zcl_its_gen_transactions DEFINITION
              product_id TYPE zits_product-product_id,
              quantity   TYPE zits_soitem-quantity,
              price      TYPE zits_product-sale_price,
+             promo_id   TYPE zits_promo-promo_id,
+             promo_pct  TYPE zits_promo-discount_percent,
            END OF ty_line,
            ty_lines TYPE STANDARD TABLE OF ty_line WITH EMPTY KEY.
+
+    "--- promotions, split by the level they apply at ---
+    TYPES: BEGIN OF ty_promo,
+             promo_id         TYPE zits_promo-promo_id,
+             promo_type       TYPE zits_promo-promo_type,
+             product_id       TYPE zits_promo-product_id,
+             discount_percent TYPE zits_promo-discount_percent,
+             threshold_qty    TYPE zits_promo-threshold_qty,
+             threshold_amount TYPE zits_promo-threshold_amount,
+             valid_from       TYPE zits_promo-valid_from,
+             valid_to         TYPE zits_promo-valid_to,
+           END OF ty_promo,
+           ty_promos TYPE STANDARD TABLE OF ty_promo WITH EMPTY KEY.
 
     TYPES: BEGIN OF ty_stat,
              branch_id    TYPE zits_branch-branch_id,
@@ -69,12 +84,15 @@ CLASS zcl_its_gen_transactions DEFINITION
              po_received  TYPE i,
              po_rejected  TYPE i,
              po_failed    TYPE i,
+             item_promos  TYPE i,
+             order_promos TYPE i,
              revenue      TYPE zits_so-total_amount,
            END OF ty_stat,
            ty_stats TYPE STANDARD TABLE OF ty_stat WITH EMPTY KEY.
 
     DATA mt_products TYPE ty_products.
     DATA mt_weighted TYPE ty_weighted.
+    DATA mt_promos   TYPE ty_promos.
     DATA mt_reserved TYPE ty_reserveds.
     DATA mt_stats    TYPE ty_stats.
     DATA mt_failures TYPE STANDARD TABLE OF string WITH EMPTY KEY.
@@ -90,6 +108,8 @@ CLASS zcl_its_gen_transactions DEFINITION
 
     METHODS load_products
       RETURNING VALUE(rv_ok) TYPE abap_bool.
+
+    METHODS load_promos.
 
     METHODS available_qty
       IMPORTING iv_branch_id  TYPE zits_stock-branch_id
@@ -145,6 +165,13 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
     IF load_products( ) = abap_false.
       out->write( |ABORTED - no active products found. Run ZCL_ITS_GEN_MASTER first.| ).
       RETURN.
+    ENDIF.
+
+    load_promos( ).
+    IF mt_promos IS INITIAL.
+      out->write( |No active promotions found - orders will be generated without discounts.| ).
+    ELSE.
+      out->write( |Found { lines( mt_promos ) } active promotions.| ).
     ENDIF.
 
     "--- opening balances must already be posted, and dated before the
@@ -268,6 +295,21 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD load_promos.
+
+    "--- Only active promotions. Validity against the order's SalesDate is
+    "    checked at the point of use, because the generated orders are
+    "    backdated across three months. ---
+    SELECT FROM zits_promo
+      FIELDS promo_id, promo_type, product_id, discount_percent,
+             threshold_qty, threshold_amount, valid_from, valid_to
+      WHERE is_active = 'X'
+      ORDER BY promo_id
+      INTO TABLE @mt_promos.
+
+  ENDMETHOD.
+
+
   METHOD available_qty.
 
     "--- read the table fresh every time rather than trusting a snapshot,
@@ -334,6 +376,8 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
       WHEN 'po_received'.  <ls_st>-po_received  = <ls_st>-po_received  + 1.
       WHEN 'po_rejected'.  <ls_st>-po_rejected  = <ls_st>-po_rejected  + 1.
       WHEN 'po_failed'.    <ls_st>-po_failed    = <ls_st>-po_failed    + 1.
+      WHEN 'item_promos'.  <ls_st>-item_promos  = <ls_st>-item_promos  + 1.
+      WHEN 'order_promos'. <ls_st>-order_promos = <ls_st>-order_promos + 1.
     ENDCASE.
 
   ENDMETHOD.
@@ -427,6 +471,11 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
 
       DATA(lv_idx) = sy-index.
 
+      "--- the date is settled first: promotion validity is judged against
+      "    it while the lines are being built ---
+      DATA lv_date TYPE d.
+      lv_date = iv_from + next_int( lv_span ).
+
       "--- build the basket from what the branch can actually spare ---
       DATA lt_lines TYPE ty_lines.
       CLEAR lt_lines.
@@ -470,9 +519,33 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
 
         READ TABLE mt_products INTO DATA(ls_prod) WITH KEY product_id = lv_pid.
 
+        "--- roughly one line in three carries its product's promotion, when
+        "    one exists and covers the order's date. Not every line, so the
+        "    reports still show a mix of discounted and full-price sales. ---
+        DATA lv_line_promo TYPE zits_promo-promo_id.
+        DATA lv_line_pct   TYPE zits_promo-discount_percent.
+        CLEAR lv_line_promo.
+        CLEAR lv_line_pct.
+
+        IF next_int( 3 ) = 0.
+          LOOP AT mt_promos INTO DATA(ls_ipromo)
+            WHERE promo_type = 'I' AND product_id = lv_pid.
+
+            IF ( ls_ipromo-valid_from IS INITIAL OR ls_ipromo-valid_from <= lv_date )
+           AND ( ls_ipromo-valid_to   IS INITIAL OR ls_ipromo-valid_to   >= lv_date ).
+              lv_line_promo = ls_ipromo-promo_id.
+              lv_line_pct   = ls_ipromo-discount_percent.
+              EXIT.
+            ENDIF.
+
+          ENDLOOP.
+        ENDIF.
+
         APPEND VALUE #( product_id = lv_pid
                         quantity   = lv_qty
-                        price      = ls_prod-sale_price ) TO lt_lines.
+                        price      = ls_prod-sale_price
+                        promo_id   = lv_line_promo
+                        promo_pct  = lv_line_pct ) TO lt_lines.
 
         reserve( iv_branch_id  = is_plan-branch_id
                  iv_product_id = lv_pid
@@ -485,20 +558,65 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
         CONTINUE.
       ENDIF.
 
-      "--- expected total, so the approval level is known up front and the
-      "    orders can be grouped by approver instead of switching persona
-      "    once per document ---
-      DATA lv_total TYPE zits_so-total_amount.
-      CLEAR lv_total.
+      "--- Subtotal AFTER item discounts, which is the figure the BO's
+      "    recalc_header will arrive at: SubtotalAmount is the sum of the
+      "    item Amounts, and each of those is already net of its own
+      "    promotion. An order-level threshold is measured against this. ---
+      DATA lv_subtotal TYPE zits_so-subtotal_amount.
+      DATA lv_totalqty TYPE zits_soitem-quantity.
+      CLEAR lv_subtotal.
+      CLEAR lv_totalqty.
+
       LOOP AT lt_lines INTO DATA(ls_line).
-        lv_total = lv_total + ( ls_line-quantity * ls_line-price ).
+        DATA lv_gross TYPE zits_soitem-amount.
+        lv_gross = ls_line-quantity * ls_line-price.
+        IF ls_line-promo_pct > 0.
+          lv_gross = lv_gross - ( lv_gross * ls_line-promo_pct / 100 ).
+        ENDIF.
+        lv_subtotal = lv_subtotal + lv_gross.
+        lv_totalqty = lv_totalqty + ls_line-quantity.
       ENDLOOP.
 
-      DATA(lv_level) = zcl_its_approval=>get_required_level_so( lv_total ).
+      "--- roughly one order in three also carries an order-level promotion,
+      "    but ONLY one whose threshold this order actually meets:
+      "    validateOrderPromo rejects an unmet threshold and would fail the
+      "    whole save rather than quietly skipping the discount. ---
+      DATA lv_ord_promo TYPE zits_promo-promo_id.
+      DATA lv_ord_pct   TYPE zits_promo-discount_percent.
+      CLEAR lv_ord_promo.
+      CLEAR lv_ord_pct.
 
-      "--- spread the dates over the period instead of clustering ---
-      DATA lv_date TYPE d.
-      lv_date = iv_from + next_int( lv_span ).
+      IF next_int( 3 ) = 0.
+        LOOP AT mt_promos INTO DATA(ls_opromo)
+          WHERE promo_type = 'Q' OR promo_type = 'A'.
+
+          IF ( ls_opromo-valid_from IS NOT INITIAL AND ls_opromo-valid_from > lv_date )
+          OR ( ls_opromo-valid_to   IS NOT INITIAL AND ls_opromo-valid_to   < lv_date ).
+            CONTINUE.
+          ENDIF.
+
+          IF ( ls_opromo-promo_type = 'Q' AND lv_totalqty  >= ls_opromo-threshold_qty )
+          OR ( ls_opromo-promo_type = 'A' AND lv_subtotal  >= ls_opromo-threshold_amount ).
+            lv_ord_promo = ls_opromo-promo_id.
+            lv_ord_pct   = ls_opromo-discount_percent.
+            EXIT.
+          ENDIF.
+
+        ENDLOOP.
+      ENDIF.
+
+      "--- expected total, so the approval level is known up front and the
+      "    orders can be grouped by approver instead of switching persona
+      "    once per document. Discounts are subtracted here too, or the
+      "    prediction would routinely disagree with the level the BO
+      "    computes from the post-discount TotalAmount. ---
+      DATA lv_total TYPE zits_so-total_amount.
+      lv_total = lv_subtotal.
+      IF lv_ord_pct > 0.
+        lv_total = lv_total - ( lv_subtotal * lv_ord_pct / 100 ).
+      ENDIF.
+
+      DATA(lv_level) = zcl_its_approval=>get_required_level_so( lv_total ).
 
       DATA(lv_pay) = SWITCH zits_so-payment_method( next_int( 3 )
                        WHEN 0 THEN 'C' WHEN 1 THEN 'R' ELSE 'T' ).
@@ -514,7 +632,8 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
       so_create = VALUE #( ( %cid          = lv_cid
                              SalesDate     = lv_date
                              CurrencyCode  = 'THB'
-                             PaymentMethod = lv_pay ) ).
+                             PaymentMethod = lv_pay
+                             PromoID       = lv_ord_promo ) ).
 
       DATA ls_items LIKE LINE OF so_items.
       CLEAR ls_items.
@@ -523,14 +642,18 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
       LOOP AT lt_lines INTO ls_line.
         APPEND VALUE #( %cid      = |{ lv_cid }_{ sy-tabix }|
                         ProductID = ls_line-product_id
-                        Quantity  = ls_line-quantity ) TO ls_items-%target.
+                        Quantity  = ls_line-quantity
+                        PromoID   = ls_line-promo_id ) TO ls_items-%target.
       ENDLOOP.
       APPEND ls_items TO so_items.
 
+      "--- only PromoID is sent; DiscountPercent, DiscountAmount, Amount,
+      "    SubtotalAmount and TotalAmount are all computed by the BO's own
+      "    determinations, exactly as they are for a hand-typed order ---
       MODIFY ENTITIES OF zi_its_salesorder
         ENTITY SalesOrder
-          CREATE FIELDS ( SalesDate CurrencyCode PaymentMethod ) WITH so_create
-          CREATE BY \_Item FIELDS ( ProductID Quantity ) WITH so_items
+          CREATE FIELDS ( SalesDate CurrencyCode PaymentMethod PromoID ) WITH so_create
+          CREATE BY \_Item FIELDS ( ProductID Quantity PromoID ) WITH so_items
         FAILED   DATA(so_failed)
         REPORTED DATA(so_rep).
 
@@ -549,6 +672,13 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
       ENDIF.
 
       bump( iv_branch_id = is_plan-branch_id iv_field = 'so_created' ).
+
+      IF lv_ord_promo IS NOT INITIAL.
+        bump( iv_branch_id = is_plan-branch_id iv_field = 'order_promos' ).
+      ENDIF.
+      LOOP AT lt_lines INTO ls_line WHERE promo_id IS NOT INITIAL.
+        bump( iv_branch_id = is_plan-branch_id iv_field = 'item_promos' ).
+      ENDLOOP.
 
       DATA(lv_uuid) = latest_so_uuid( ).
       IF lv_uuid IS INITIAL.
@@ -1037,6 +1167,22 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
     out->write( |          rejected    : { lv_t_rejected } (on purpose)| ).
     out->write( |          failed      : { lv_t_failed }| ).
     out->write( |Purchase orders created / received : { lv_t_pocre } / { lv_t_porcv } (target { gc_po_total })| ).
+    out->write( || ).
+
+    "--- how much of the history carries a discount ---
+    DATA lv_t_ipromo TYPE i.
+    DATA lv_t_opromo TYPE i.
+    LOOP AT mt_stats INTO DATA(ls_pr).
+      lv_t_ipromo = lv_t_ipromo + ls_pr-item_promos.
+      lv_t_opromo = lv_t_opromo + ls_pr-order_promos.
+    ENDLOOP.
+
+    IF mt_promos IS INITIAL.
+      out->write( |Promotions: none active - all orders generated at full price.| ).
+    ELSE.
+      out->write( |Promotions applied: { lv_t_ipromo } item lines, { lv_t_opromo } orders| &&
+                  | (roughly one in three of each, where one qualified).| ).
+    ENDIF.
     out->write( || ).
 
     "--- did the up-front level prediction match what the BO computed? ---

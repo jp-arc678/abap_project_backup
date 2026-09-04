@@ -116,10 +116,10 @@ CLASS zcl_its_gen_opening IMPLEMENTATION.
     DELETE FROM zits_po.
     out->write( |Deleted purchase orders| ).
 
-    " the old single-shop ledger - still written by Complete/Receive until
-    " it is retired, so it counts as transactional data and goes as well
-    DELETE FROM zits_ledger.
-    out->write( |Deleted ledger entries| ).
+    " ZITS_LEDGER is deliberately NOT touched any more. The old single-shop
+    " ledger is retired - nothing writes to it, journal entries carry every
+    " figure it used to hold - and referencing it here would keep the table
+    " alive as a dependency and block deleting it in ADT.
 
     " draft tables, so no half-finished document survives the reset
     DELETE FROM zits_jeitem_d.

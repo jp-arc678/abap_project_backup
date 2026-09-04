@@ -19,6 +19,7 @@ CLASS zcl_its_gen_master IMPLEMENTATION.
     DATA lt_costctr  TYPE STANDARD TABLE OF zits_costctr.
     DATA lt_glacct   TYPE STANDARD TABLE OF zits_glacct.
     DATA lt_partner  TYPE STANDARD TABLE OF zits_partner.
+    DATA lt_promo    TYPE STANDARD TABLE OF zits_promo.
     DATA lt_stock    TYPE STANDARD TABLE OF zits_stock.
 
     "--- context values (ABAP Cloud compliant) ---
@@ -33,6 +34,7 @@ CLASS zcl_its_gen_master IMPLEMENTATION.
     DELETE FROM zits_costctr.
     DELETE FROM zits_glacct.
     DELETE FROM zits_partner.
+    DELETE FROM zits_promo.
     DELETE FROM zits_stock.
 
 *--------------------------------------------------------------------*
@@ -239,6 +241,53 @@ CLASS zcl_its_gen_master IMPLEMENTATION.
     ENDLOOP.
 
 *--------------------------------------------------------------------*
+* 7b. PROMOTIONS
+*     Validity spans the whole generated history window and beyond, so a
+*     backdated order never falls outside it. ZCL_ITS_GEN_TRANSACTIONS
+*     applies these to a minority of orders.
+*
+*     promo_type: I = one product, Q = quantity threshold, A = order amount
+*     Each type fills exactly ONE qualifying field and leaves the other two
+*     empty - that is what validateTypeFields on the Promotion BO enforces.
+*--------------------------------------------------------------------*
+    DATA lv_promo_from TYPE d.
+    DATA lv_promo_to   TYPE d.
+    lv_promo_from = lv_today - 180.
+    lv_promo_to   = lv_today + 180.
+
+    lt_promo = VALUE #(
+      currency_code = 'THB'
+      unit          = 'EA'
+      is_active     = 'X'
+      valid_from    = lv_promo_from
+      valid_to      = lv_promo_to
+
+      "--- type I: a specific product is discounted ---
+      ( promo_id = 'PR-ACC10'  promo_name = 'Accessory Deal 10%'
+        promo_type = 'I'  product_id = 'P0007'  discount_percent = '10.00' )
+
+      ( promo_id = 'PR-KBD15'  promo_name = 'Keyboard Clearance 15%'
+        promo_type = 'I'  product_id = 'P0009'  discount_percent = '15.00' )
+
+      ( promo_id = 'PR-NBK05'  promo_name = 'Notebook Promotion 5%'
+        promo_type = 'I'  product_id = 'P0001'  discount_percent = '5.00' )
+
+      "--- type Q: buy this many units in one order ---
+      ( promo_id = 'PR-BULK5'  promo_name = 'Bulk Buy 5 Units 5%'
+        promo_type = 'Q'  threshold_qty = '5'  discount_percent = '5.00' )
+
+      ( promo_id = 'PR-BULK10' promo_name = 'Bulk Buy 10 Units 8%'
+        promo_type = 'Q'  threshold_qty = '10' discount_percent = '8.00' )
+
+      "--- type A: spend this much in one order ---
+      ( promo_id = 'PR-SPEND30' promo_name = 'Spend 30,000 Get 3%'
+        promo_type = 'A'  threshold_amount = '30000.00' discount_percent = '3.00' )
+
+      ( promo_id = 'PR-SPEND80' promo_name = 'Spend 80,000 Get 7%'
+        promo_type = 'A'  threshold_amount = '80000.00' discount_percent = '7.00' )
+    ).
+
+*--------------------------------------------------------------------*
 * 8. stamp admin fields and insert
 *--------------------------------------------------------------------*
     LOOP AT lt_company ASSIGNING FIELD-SYMBOL(<ls_co>).
@@ -289,6 +338,14 @@ CLASS zcl_its_gen_master IMPLEMENTATION.
       <ls_pa>-last_changed_at       = lv_now.
     ENDLOOP.
 
+    LOOP AT lt_promo ASSIGNING FIELD-SYMBOL(<ls_pr>).
+      <ls_pr>-created_by            = lv_user.
+      <ls_pr>-created_at            = lv_now.
+      <ls_pr>-local_last_changed_by = lv_user.
+      <ls_pr>-local_last_changed_at = lv_now.
+      <ls_pr>-last_changed_at       = lv_now.
+    ENDLOOP.
+
     LOOP AT lt_stock ASSIGNING FIELD-SYMBOL(<ls_st>).
       <ls_st>-created_by            = lv_user.
       <ls_st>-created_at            = lv_now.
@@ -303,6 +360,7 @@ CLASS zcl_its_gen_master IMPLEMENTATION.
     INSERT zits_costctr FROM TABLE @lt_costctr.
     INSERT zits_glacct  FROM TABLE @lt_glacct.
     INSERT zits_partner FROM TABLE @lt_partner.
+    INSERT zits_promo   FROM TABLE @lt_promo.
     INSERT zits_stock   FROM TABLE @lt_stock.
 
     COMMIT WORK.
