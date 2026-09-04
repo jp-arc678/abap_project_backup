@@ -58,6 +58,12 @@ CLASS zcl_its_gen_transactions DEFINITION
            END OF ty_line,
            ty_lines TYPE STANDARD TABLE OF ty_line WITH EMPTY KEY.
 
+    "--- named customers, for the orders big enough to have one ---
+    TYPES: BEGIN OF ty_customer,
+             partner_id TYPE zits_partner-partner_id,
+           END OF ty_customer,
+           ty_customers TYPE STANDARD TABLE OF ty_customer WITH EMPTY KEY.
+
     "--- promotions, split by the level they apply at ---
     TYPES: BEGIN OF ty_promo,
              promo_id         TYPE zits_promo-promo_id,
@@ -86,13 +92,15 @@ CLASS zcl_its_gen_transactions DEFINITION
              po_failed    TYPE i,
              item_promos  TYPE i,
              order_promos TYPE i,
+             named_cust   TYPE i,
              revenue      TYPE zits_so-total_amount,
            END OF ty_stat,
            ty_stats TYPE STANDARD TABLE OF ty_stat WITH EMPTY KEY.
 
     DATA mt_products TYPE ty_products.
     DATA mt_weighted TYPE ty_weighted.
-    DATA mt_promos   TYPE ty_promos.
+    DATA mt_promos    TYPE ty_promos.
+    DATA mt_customers TYPE ty_customers.
     DATA mt_reserved TYPE ty_reserveds.
     DATA mt_stats    TYPE ty_stats.
     DATA mt_failures TYPE STANDARD TABLE OF string WITH EMPTY KEY.
@@ -110,6 +118,8 @@ CLASS zcl_its_gen_transactions DEFINITION
       RETURNING VALUE(rv_ok) TYPE abap_bool.
 
     METHODS load_promos.
+
+    METHODS load_customers.
 
     METHODS available_qty
       IMPORTING iv_branch_id  TYPE zits_stock-branch_id
@@ -172,6 +182,13 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
       out->write( |No active promotions found - orders will be generated without discounts.| ).
     ELSE.
       out->write( |Found { lines( mt_promos ) } active promotions.| ).
+    ENDIF.
+
+    load_customers( ).
+    IF mt_customers IS INITIAL.
+      out->write( |No active customer partners found - every sale will be walk-in.| ).
+    ELSE.
+      out->write( |Found { lines( mt_customers ) } customer partners.| ).
     ENDIF.
 
     "--- opening balances must already be posted, and dated before the
@@ -310,6 +327,20 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
   ENDMETHOD.
 
 
+  METHOD load_customers.
+
+    "--- 'B' counts too: a partner flagged as both buys as well as sells,
+    "    the same rule validateCustomer applies ---
+    SELECT FROM zits_partner
+      FIELDS partner_id
+      WHERE ( partner_role = 'C' OR partner_role = 'B' )
+        AND is_active = 'X'
+      ORDER BY partner_id
+      INTO TABLE @mt_customers.
+
+  ENDMETHOD.
+
+
   METHOD available_qty.
 
     "--- read the table fresh every time rather than trusting a snapshot,
@@ -378,6 +409,7 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
       WHEN 'po_failed'.    <ls_st>-po_failed    = <ls_st>-po_failed    + 1.
       WHEN 'item_promos'.  <ls_st>-item_promos  = <ls_st>-item_promos  + 1.
       WHEN 'order_promos'. <ls_st>-order_promos = <ls_st>-order_promos + 1.
+      WHEN 'named_cust'.   <ls_st>-named_cust   = <ls_st>-named_cust   + 1.
     ENDCASE.
 
   ENDMETHOD.
@@ -618,6 +650,23 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
 
       DATA(lv_level) = zcl_its_approval=>get_required_level_so( lv_total ).
 
+      "--- A named customer on the bigger orders only. The threshold is
+      "    ZCL_ITS_APPROVAL's own branch limit rather than a new number of
+      "    its own: an order large enough to need a manager's signature is
+      "    the same order a business, not a passer-by, is placing. Below it
+      "    the sale stays walk-in, which is what a retail counter mostly is.
+      "
+      "    Three in four rather than all of them - a company can still send
+      "    somebody to buy over the counter without an account. ---
+      DATA lv_customer TYPE zits_so-customer_id.
+      CLEAR lv_customer.
+
+      IF mt_customers IS NOT INITIAL
+     AND lv_total >= zcl_its_approval=>gc_branch_limit
+     AND next_int( 4 ) < 3.
+        lv_customer = mt_customers[ 1 + next_int( lines( mt_customers ) ) ]-partner_id.
+      ENDIF.
+
       DATA(lv_pay) = SWITCH zits_so-payment_method( next_int( 3 )
                        WHEN 0 THEN 'C' WHEN 1 THEN 'R' ELSE 'T' ).
 
@@ -633,7 +682,8 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
                              SalesDate     = lv_date
                              CurrencyCode  = 'THB'
                              PaymentMethod = lv_pay
-                             PromoID       = lv_ord_promo ) ).
+                             PromoID       = lv_ord_promo
+                             CustomerID    = lv_customer ) ).
 
       DATA ls_items LIKE LINE OF so_items.
       CLEAR ls_items.
@@ -652,7 +702,7 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
       "    determinations, exactly as they are for a hand-typed order ---
       MODIFY ENTITIES OF zi_its_salesorder
         ENTITY SalesOrder
-          CREATE FIELDS ( SalesDate CurrencyCode PaymentMethod PromoID ) WITH so_create
+          CREATE FIELDS ( SalesDate CurrencyCode PaymentMethod PromoID CustomerID ) WITH so_create
           CREATE BY \_Item FIELDS ( ProductID Quantity PromoID ) WITH so_items
         FAILED   DATA(so_failed)
         REPORTED DATA(so_rep).
@@ -675,6 +725,9 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
 
       IF lv_ord_promo IS NOT INITIAL.
         bump( iv_branch_id = is_plan-branch_id iv_field = 'order_promos' ).
+      ENDIF.
+      IF lv_customer IS NOT INITIAL.
+        bump( iv_branch_id = is_plan-branch_id iv_field = 'named_cust' ).
       ENDIF.
       LOOP AT lt_lines INTO ls_line WHERE promo_id IS NOT INITIAL.
         bump( iv_branch_id = is_plan-branch_id iv_field = 'item_promos' ).
@@ -1172,9 +1225,11 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
     "--- how much of the history carries a discount ---
     DATA lv_t_ipromo TYPE i.
     DATA lv_t_opromo TYPE i.
+    DATA lv_t_cust   TYPE i.
     LOOP AT mt_stats INTO DATA(ls_pr).
       lv_t_ipromo = lv_t_ipromo + ls_pr-item_promos.
       lv_t_opromo = lv_t_opromo + ls_pr-order_promos.
+      lv_t_cust   = lv_t_cust   + ls_pr-named_cust.
     ENDLOOP.
 
     IF mt_promos IS INITIAL.
@@ -1183,6 +1238,9 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
       out->write( |Promotions applied: { lv_t_ipromo } item lines, { lv_t_opromo } orders| &&
                   | (roughly one in three of each, where one qualified).| ).
     ENDIF.
+
+    out->write( |Named customers  : { lv_t_cust } of { lv_t_created } orders| &&
+                | (only those at or above { zcl_its_approval=>gc_branch_limit } THB; the rest are walk-in).| ).
     out->write( || ).
 
     "--- did the up-front level prediction match what the BO computed? ---
