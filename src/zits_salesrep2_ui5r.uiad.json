@@ -1,0 +1,34 @@
+{
+  "formatVersion": "2",
+  "header": {
+    "description": "displaying branch's sales comparision",
+    "originalLanguage": "en",
+    "abapLanguageVersion": "cloudDevelopment"
+  },
+  "generalInformation": {
+    "appType": "ui5",
+    "catalogId": "SAP_TC_UI5_REPO_UIAD",
+    "targetMappingTitle": "ZITS_SALESREP2"
+  },
+  "ui5AppDetails": {
+    "appId": "zitsbc"
+  },
+  "navigation": {
+    "targetMappingId": "ZITS_SALESREP2_UI5R_TM",
+    "semanticObject": "Branchcomparison",
+    "action": "display",
+    "desktop": true,
+    "tablet": true,
+    "phone": true
+  },
+  "tiles": [
+    {
+      "id": "ZITS_SALESREP2_UI5R_AL",
+      "tileType": "static",
+      "isDefault": true,
+      "standard": {
+        "title": "ZITS_SALESREP2"
+      }
+    }
+  ]
+}

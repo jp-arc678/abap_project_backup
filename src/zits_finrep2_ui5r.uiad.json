@@ -1,0 +1,34 @@
+{
+  "formatVersion": "2",
+  "header": {
+    "description": "cash position",
+    "originalLanguage": "en",
+    "abapLanguageVersion": "cloudDevelopment"
+  },
+  "generalInformation": {
+    "appType": "ui5",
+    "catalogId": "SAP_TC_UI5_REPO_UIAD",
+    "targetMappingTitle": "zits_cashposition"
+  },
+  "ui5AppDetails": {
+    "appId": "zitscp"
+  },
+  "navigation": {
+    "targetMappingId": "ZITS_FINREP2_UI5R_TM",
+    "semanticObject": "CashPosition",
+    "action": "display",
+    "desktop": true,
+    "tablet": true,
+    "phone": true
+  },
+  "tiles": [
+    {
+      "id": "ZITS_FINREP2_UI5R_AL",
+      "tileType": "static",
+      "isDefault": true,
+      "standard": {
+        "title": "zits_cashposition"
+      }
+    }
+  ]
+}

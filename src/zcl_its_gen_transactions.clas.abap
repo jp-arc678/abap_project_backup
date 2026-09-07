@@ -14,7 +14,7 @@ CLASS zcl_its_gen_transactions DEFINITION
 *======================================================================*
     CONSTANTS gc_days_back  TYPE i VALUE 90.   "must match ZCL_ITS_GEN_OPENING
     CONSTANTS gc_periods    TYPE i VALUE 3.    "3 months
-    CONSTANTS gc_so_total   TYPE i VALUE 270.
+    CONSTANTS gc_so_total   TYPE i VALUE 150.
     CONSTANTS gc_po_total   TYPE i VALUE 30.
     CONSTANTS gc_reject_pct TYPE i VALUE 5.    "% of submitted orders rejected
 

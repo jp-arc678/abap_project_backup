@@ -1,0 +1,34 @@
+{
+  "formatVersion": "2",
+  "header": {
+    "description": "for viewing gl accounts",
+    "originalLanguage": "en",
+    "abapLanguageVersion": "cloudDevelopment"
+  },
+  "generalInformation": {
+    "appType": "ui5",
+    "catalogId": "SAP_TC_UI5_REPO_UIAD",
+    "targetMappingTitle": "zits_glacct"
+  },
+  "ui5AppDetails": {
+    "appId": "zitsglaccount"
+  },
+  "navigation": {
+    "targetMappingId": "ZITS_GLACCT_UI5R_TM",
+    "semanticObject": "GLAccount",
+    "action": "manage",
+    "desktop": true,
+    "tablet": true,
+    "phone": true
+  },
+  "tiles": [
+    {
+      "id": "ZITS_GLACCT_UI5R_AL",
+      "tileType": "static",
+      "isDefault": true,
+      "standard": {
+        "title": "zits_glacct"
+      }
+    }
+  ]
+}

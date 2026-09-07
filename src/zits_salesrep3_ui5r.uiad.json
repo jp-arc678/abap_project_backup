@@ -1,0 +1,34 @@
+{
+  "formatVersion": "2",
+  "header": {
+    "description": "display sales on each branches",
+    "originalLanguage": "en",
+    "abapLanguageVersion": "cloudDevelopment"
+  },
+  "generalInformation": {
+    "appType": "ui5",
+    "catalogId": "SAP_TC_UI5_REPO_UIAD",
+    "targetMappingTitle": "ZITS_SALEREP3"
+  },
+  "ui5AppDetails": {
+    "appId": "zitssbb"
+  },
+  "navigation": {
+    "targetMappingId": "ZITS_SALESREP3_UI5R_TM",
+    "semanticObject": "SalesByBranch",
+    "action": "display",
+    "desktop": true,
+    "tablet": true,
+    "phone": true
+  },
+  "tiles": [
+    {
+      "id": "ZITS_SALESREP3_UI5R_AL",
+      "tileType": "static",
+      "isDefault": true,
+      "standard": {
+        "title": "ZITS_SALEREP3"
+      }
+    }
+  ]
+}

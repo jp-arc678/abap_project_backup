@@ -96,7 +96,7 @@ CLASS zcl_its_switch_persona IMPLEMENTATION.
 *--- Salesperson --------------------------------------------------------
 *    lv_role = 'S'.  lv_branch = 'BR01'.  lv_label = 'Salesperson @ Siam Paragon'.
 *   lv_role = 'S'.  lv_branch = 'BR02'.  lv_label = 'Salesperson @ Central Ladprao'.
-*   lv_role = 'S'.  lv_branch = 'BR03'.  lv_label = 'Salesperson @ Chiang Mai'.
+*  lv_role = 'S'.  lv_branch = 'BR03'.  lv_label = 'Salesperson @ Chiang Mai'.
 
 *--- Warehouse staff ----------------------------------------------------
 *   lv_role = 'W'.  lv_branch = 'BR01'.  lv_label = 'Warehouse @ Siam Paragon'.
@@ -104,16 +104,16 @@ CLASS zcl_its_switch_persona IMPLEMENTATION.
 *   lv_role = 'W'.  lv_branch = 'BR03'.  lv_label = 'Warehouse @ Chiang Mai'.
 
 *--- Branch manager (approves branch-level orders) ----------------------
-*   lv_role = 'M'.  lv_branch = 'BR01'.  lv_label = 'Branch Manager @ Siam Paragon'.
+*  lv_role = 'M'.  lv_branch = 'BR01'.  lv_label = 'Branch Manager @ Siam Paragon'.
 *   lv_role = 'M'.  lv_branch = 'BR02'.  lv_label = 'Branch Manager @ Central Ladprao'.
 *  lv_role = 'M'.  lv_branch = 'BR03'.  lv_label = 'Branch Manager @ Chiang Mai'.
 
 *--- Regional manager (approves high-value orders, whole region) --------
 *   lv_role = 'R'.  lv_region = 'CEN'.  lv_label = 'Regional Manager (Central)'.
-*   lv_role = 'R'.  lv_region = 'NOR'.  lv_label = 'Regional Manager (North)'.
+  lv_role = 'R'.  lv_region = 'NOR'.  lv_label = 'Regional Manager (North)'.
 
 *--- Accounting (head office, no branch, no region) ---------------------
-   lv_role = 'A'.  lv_label = 'Accounting @ Head Office'.
+*   lv_role = 'A'.  lv_label = 'Accounting @ Head Office'.
 
 *======================================================================*
 
