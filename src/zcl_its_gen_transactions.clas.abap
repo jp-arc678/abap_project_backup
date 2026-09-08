@@ -501,6 +501,7 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
 *----------------------------------------------------------------------*
 * Phase 1 - as the branch salesperson: create and submit
 *----------------------------------------------------------------------*
+    ROLLBACK ENTITIES.   "close the RAP transaction: switch_to( ) does a COMMIT WORK
     IF zcl_its_switch_persona=>switch_to( iv_role      = 'S'
                                           iv_branch_id = is_plan-branch_id ) IS INITIAL.
       APPEND |{ is_plan-branch_id } SO: no active salesperson - batch skipped| TO mt_failures.
@@ -724,6 +725,7 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
 
       COMMIT ENTITIES RESPONSE OF zi_its_salesorder FAILED DATA(so_cfail) REPORTED DATA(so_crep).
       IF so_cfail IS NOT INITIAL.
+        ROLLBACK ENTITIES.   "the save failed - do not leave it in the buffer
         APPEND |{ is_plan-branch_id } SO #{ lv_idx } SAVE: { msg_of( so_crep-salesorder ) }| TO mt_failures.
         bump( iv_branch_id = is_plan-branch_id iv_field = 'so_failed' ).
         CONTINUE.
@@ -814,6 +816,7 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
         "--- plain IF, not COND #( ): an inline DATA( ) target gives the
         "    compiler nothing to infer the # from ---
         DATA lv_switched TYPE zits_employee-employee_id.
+        ROLLBACK ENTITIES.   "as above - a COMMIT WORK follows
         IF lv_want_level = 1.
           lv_switched = zcl_its_switch_persona=>switch_to( iv_role      = 'M'
                                                            iv_branch_id = is_plan-branch_id ).
@@ -868,6 +871,7 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
 *----------------------------------------------------------------------*
 * Phase 4 - back to the salesperson: complete everything confirmed
 *----------------------------------------------------------------------*
+    ROLLBACK ENTITIES.   "close the RAP transaction: switch_to( ) does a COMMIT WORK
     IF zcl_its_switch_persona=>switch_to( iv_role      = 'S'
                                           iv_branch_id = is_plan-branch_id ) IS INITIAL.
       APPEND |{ is_plan-branch_id } SO: salesperson gone before Complete| TO mt_failures.
@@ -894,6 +898,7 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
 
       COMMIT ENTITIES RESPONSE OF zi_its_salesorder FAILED DATA(cmp_cfail) REPORTED DATA(cmp_crep).
       IF cmp_cfail IS NOT INITIAL.
+        ROLLBACK ENTITIES.   "the save failed - do not leave it in the buffer
         APPEND |{ is_plan-branch_id } SO COMPLETE SAVE: { msg_of( cmp_crep-salesorder ) }| TO mt_failures.
         bump( iv_branch_id = is_plan-branch_id iv_field = 'so_failed' ).
         CONTINUE.
@@ -944,6 +949,7 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
 *----------------------------------------------------------------------*
 * Phase 1 - as the branch warehouse staff: create and submit
 *----------------------------------------------------------------------*
+    ROLLBACK ENTITIES.   "close the RAP transaction: switch_to( ) does a COMMIT WORK
     IF zcl_its_switch_persona=>switch_to( iv_role      = 'W'
                                           iv_branch_id = is_plan-branch_id ) IS INITIAL.
       APPEND |{ is_plan-branch_id } PO: no active warehouse staff - batch skipped| TO mt_failures.
@@ -994,6 +1000,14 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
       ELSE.
         lv_sup = lt_suppliers[ 1 + next_int( lines( lt_suppliers ) ) ]-partner_id.
       ENDIF.
+      "--- PaymentMethod is mandatory and checked by validatePaymentMethod
+      "    on save, so it has to be set here or every create fails at
+      "    COMMIT. Only 'C' and 'R' are accepted on a purchase order.
+      "    Two thirds go by bank transfer, which is what a real supplier
+      "    relationship looks like. ---
+      DATA(lv_pmt) = SWITCH zits_po-payment_method( next_int( 3 )
+                       WHEN 0 THEN 'C' ELSE 'R' ).
+
       DATA(lv_cid) = |PO_{ is_plan-branch_id }_{ lv_idx }_{ iv_from }|.
 
       DATA po_create TYPE TABLE FOR CREATE zi_its_purchaseorder.
@@ -1001,10 +1015,11 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
       CLEAR po_create.
       CLEAR po_items.
 
-      po_create = VALUE #( ( %cid         = lv_cid
-                             SupplierID   = lv_sup
-                             OrderDate    = lv_date
-                             CurrencyCode = 'THB' ) ).
+      po_create = VALUE #( ( %cid          = lv_cid
+                             SupplierID    = lv_sup
+                             OrderDate     = lv_date
+                             CurrencyCode  = 'THB'
+                             PaymentMethod = lv_pmt ) ).
 
       DATA ls_items LIKE LINE OF po_items.
       CLEAR ls_items.
@@ -1020,7 +1035,7 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
 
       MODIFY ENTITIES OF zi_its_purchaseorder
         ENTITY PurchaseOrder
-          CREATE FIELDS ( SupplierID OrderDate CurrencyCode ) WITH po_create
+          CREATE FIELDS ( SupplierID OrderDate CurrencyCode PaymentMethod ) WITH po_create
           CREATE BY \_Item FIELDS ( ProductID Quantity CostPrice ) WITH po_items
         FAILED   DATA(po_failed)
         REPORTED DATA(po_rep).
@@ -1034,6 +1049,7 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
 
       COMMIT ENTITIES RESPONSE OF zi_its_purchaseorder FAILED DATA(po_cfail) REPORTED DATA(po_crep).
       IF po_cfail IS NOT INITIAL.
+        ROLLBACK ENTITIES.   "the save failed - do not leave it in the buffer
         APPEND |{ is_plan-branch_id } PO #{ lv_idx } SAVE: { msg_of( po_crep-purchaseorder ) }| TO mt_failures.
         bump( iv_branch_id = is_plan-branch_id iv_field = 'po_failed' ).
         CONTINUE.
@@ -1099,6 +1115,7 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
       IF sy-subrc = 0.
 
         DATA lv_switched TYPE zits_employee-employee_id.
+        ROLLBACK ENTITIES.   "as above - a COMMIT WORK follows
         IF lv_want_level = 1.
           lv_switched = zcl_its_switch_persona=>switch_to( iv_role      = 'M'
                                                            iv_branch_id = is_plan-branch_id ).
@@ -1154,6 +1171,7 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
 * Phase 4 - back to warehouse staff: receive, which is what puts the
 * stock on the shelf for the sales batch that follows
 *----------------------------------------------------------------------*
+    ROLLBACK ENTITIES.   "close the RAP transaction: switch_to( ) does a COMMIT WORK
     IF zcl_its_switch_persona=>switch_to( iv_role      = 'W'
                                           iv_branch_id = is_plan-branch_id ) IS INITIAL.
       APPEND |{ is_plan-branch_id } PO: warehouse staff gone before Receive| TO mt_failures.
@@ -1180,6 +1198,7 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
 
       COMMIT ENTITIES RESPONSE OF zi_its_purchaseorder FAILED DATA(rcv_cfail) REPORTED DATA(rcv_crep).
       IF rcv_cfail IS NOT INITIAL.
+        ROLLBACK ENTITIES.   "the save failed - do not leave it in the buffer
         APPEND |{ is_plan-branch_id } PO RECEIVE SAVE: { msg_of( rcv_crep-purchaseorder ) }| TO mt_failures.
         bump( iv_branch_id = is_plan-branch_id iv_field = 'po_failed' ).
         CONTINUE.
@@ -1198,6 +1217,7 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
 * run past 60 days and the worst aging bucket actually has rows in it.
 * Left alone, every debt would be recent and the report would be dull.
 *----------------------------------------------------------------------*
+    ROLLBACK ENTITIES.   "close the RAP transaction: switch_to( ) does a COMMIT WORK
     IF zcl_its_switch_persona=>switch_to( iv_role = 'A' ) IS INITIAL.
       APPEND |PO: no accounting employee - nothing could be paid| TO mt_failures.
       RETURN.
@@ -1232,6 +1252,7 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
 
       COMMIT ENTITIES RESPONSE OF zi_its_purchaseorder FAILED DATA(pay_cfail) REPORTED DATA(pay_crep).
       IF pay_cfail IS NOT INITIAL.
+        ROLLBACK ENTITIES.   "the save failed - do not leave it in the buffer
         APPEND |{ is_plan-branch_id } PO PAY: { msg_of( pay_crep-purchaseorder ) }| TO mt_failures.
         CONTINUE.
       ENDIF.
