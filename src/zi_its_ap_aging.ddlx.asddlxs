@@ -1,0 +1,15 @@
+@Metadata.layer: #CORE
+
+annotate entity ZI_ITS_AP_AGING
+    with 
+{
+     @UI.facet: [ { id: 'General',
+                 purpose: #STANDARD,
+                 type: #IDENTIFICATION_REFERENCE,
+                 label: 'place holder Details',
+                 position: 10 } ]
+    
+    placeholderid;
+
+    
+}// everything is placeholder it was not finished yet 
