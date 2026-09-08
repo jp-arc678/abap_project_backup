@@ -49,6 +49,33 @@ annotate view ZC_ITS_PURCHASEORDER with
   @UI.hidden: true
   SupplierName;
 
+  @UI: { lineItem:       [ { position: 25, importance: #MEDIUM } ],
+         identification: [ { position: 25 } ],
+         selectionField: [ { position: 25 } ] }
+  PaymentMethod;
+
+  //--- payment state: the text is derived, never stored ---
+  @UI: { lineItem:       [ { position: 26, importance: #HIGH, criticality: 'PaymentCriticality' } ],
+         identification: [ { position: 26 } ],
+         selectionField: [ { position: 26 } ] }
+  PaymentStatusText;
+
+  @UI: { lineItem:       [ { position: 27, importance: #HIGH } ],
+         identification: [ { position: 27 } ] }
+  DueDate;
+
+  @UI: { lineItem:       [ { position: 28, importance: #MEDIUM } ],
+         identification: [ { position: 28 } ] }
+  DaysToDue;
+
+  @UI: { identification: [ { position: 29 } ] }
+  PaidDate;
+
+  @UI.hidden: true
+  PaymentStatus;
+  @UI.hidden: true
+  PaymentCriticality;
+
   @UI: { lineItem: [ { position: 30, importance: #MEDIUM } ], identification: [ { position: 30 } ] }
   WarehouseStaffID;
 

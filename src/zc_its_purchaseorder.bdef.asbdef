@@ -7,6 +7,7 @@ define behavior for ZC_ITS_PURCHASEORDER alias PurchaseOrder
   use create; use update; use delete;
   use association _Item { create; }
   use action Submit; use action Approve; use action Reject; use action Cancel; use action Receive;
+  use action Pay;
   use action Edit; use action Activate; use action Discard; use action Resume; use action Prepare;
 }
 

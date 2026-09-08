@@ -90,6 +90,8 @@ CLASS zcl_its_gen_transactions DEFINITION
              po_received  TYPE i,
              po_rejected  TYPE i,
              po_failed    TYPE i,
+             po_paid      TYPE i,
+             po_unpaid    TYPE i,
              item_promos  TYPE i,
              order_promos TYPE i,
              named_cust   TYPE i,
@@ -107,6 +109,7 @@ CLASS zcl_its_gen_transactions DEFINITION
     DATA mv_seq      TYPE i VALUE 1.
     DATA mv_so_seq   TYPE i VALUE 0.
     DATA mv_lvl_diff TYPE i VALUE 0.   "predicted vs actual ApprovalLevel
+    DATA mv_oldest_from TYPE d.        "start of period 1, for the pay ratio
 
     "--- deterministic pseudo-random in 0 .. iv_max-1, so the whole
     "    generated history is reproducible across runs ---
@@ -235,6 +238,9 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
       DATA lv_from TYPE d.
       DATA lv_to   TYPE d.
       lv_from = lv_start + ( lv_period - 1 ) * lv_period_len.
+      IF lv_period = 1.
+        mv_oldest_from = lv_from.
+      ENDIF.
       lv_to   = lv_from + lv_period_len - 1.
       IF lv_to > lv_today.
         lv_to = lv_today.
@@ -407,6 +413,8 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
       WHEN 'po_received'.  <ls_st>-po_received  = <ls_st>-po_received  + 1.
       WHEN 'po_rejected'.  <ls_st>-po_rejected  = <ls_st>-po_rejected  + 1.
       WHEN 'po_failed'.    <ls_st>-po_failed    = <ls_st>-po_failed    + 1.
+      WHEN 'po_paid'.      <ls_st>-po_paid      = <ls_st>-po_paid      + 1.
+      WHEN 'po_unpaid'.    <ls_st>-po_unpaid    = <ls_st>-po_unpaid    + 1.
       WHEN 'item_promos'.  <ls_st>-item_promos  = <ls_st>-item_promos  + 1.
       WHEN 'order_promos'. <ls_st>-order_promos = <ls_st>-order_promos + 1.
       WHEN 'named_cust'.   <ls_st>-named_cust   = <ls_st>-named_cust   + 1.
@@ -976,7 +984,16 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
 
       "--- SELECT ... INTO TABLE @DATA( ) builds a STRUCTURED table even for
       "    a single field, so the component has to be named explicitly ---
-      DATA(lv_sup) = lt_suppliers[ 1 + next_int( lines( lt_suppliers ) ) ]-partner_id.
+      "--- Supplier choice is weighted, not uniform. SUP003 is the only
+      "    supplier on N60 terms in the seeded master data, so a flat pick
+      "    would leave the 60-day aging bucket almost empty. One order in
+      "    three goes to it deliberately. ---
+      DATA lv_sup TYPE zits_partner-partner_id.
+      IF next_int( 3 ) = 0.
+        lv_sup = 'SUP003'.
+      ELSE.
+        lv_sup = lt_suppliers[ 1 + next_int( lines( lt_suppliers ) ) ]-partner_id.
+      ENDIF.
       DATA(lv_cid) = |PO_{ is_plan-branch_id }_{ lv_idx }_{ iv_from }|.
 
       DATA po_create TYPE TABLE FOR CREATE zi_its_purchaseorder.
@@ -1172,6 +1189,57 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
 
     ENDLOOP.
 
+*----------------------------------------------------------------------*
+* Phase 5 - as accounting: settle some of the debts
+*
+* A cash purchase paid itself at receipt, so only credit orders are still
+* open. Roughly 60% get paid overall, but deliberately NOT evenly: the
+* oldest period is paid least, so its unsettled debts have had time to
+* run past 60 days and the worst aging bucket actually has rows in it.
+* Left alone, every debt would be recent and the report would be dull.
+*----------------------------------------------------------------------*
+    IF zcl_its_switch_persona=>switch_to( iv_role = 'A' ) IS INITIAL.
+      APPEND |PO: no accounting employee - nothing could be paid| TO mt_failures.
+      RETURN.
+    ENDIF.
+
+    "--- period 1 (oldest) pays 1 in 5; later periods pay 7 in 10 ---
+    DATA(lv_pay_in) = COND i( WHEN iv_from <= mv_oldest_from THEN 5 ELSE 10 ).
+    DATA(lv_pay_up) = COND i( WHEN iv_from <= mv_oldest_from THEN 1 ELSE 7 ).
+
+    LOOP AT lt_pending INTO ls_pend.
+
+      IF ls_pend-kill = abap_true.
+        CONTINUE.
+      ENDIF.
+
+      IF next_int( lv_pay_in ) >= lv_pay_up.
+        bump( iv_branch_id = is_plan-branch_id iv_field = 'po_unpaid' ).
+        CONTINUE.
+      ENDIF.
+
+      MODIFY ENTITIES OF zi_its_purchaseorder
+        ENTITY PurchaseOrder
+          EXECUTE Pay FROM VALUE #( ( %key-POUUID = ls_pend-uuid ) )
+        FAILED DATA(pay_failed) REPORTED DATA(pay_rep).
+
+      "--- a cash order is already paid and Pay refuses it; that is not a
+      "    failure, just nothing left to settle ---
+      IF pay_failed-purchaseorder IS NOT INITIAL.
+        ROLLBACK ENTITIES.
+        CONTINUE.
+      ENDIF.
+
+      COMMIT ENTITIES RESPONSE OF zi_its_purchaseorder FAILED DATA(pay_cfail) REPORTED DATA(pay_crep).
+      IF pay_cfail IS NOT INITIAL.
+        APPEND |{ is_plan-branch_id } PO PAY: { msg_of( pay_crep-purchaseorder ) }| TO mt_failures.
+        CONTINUE.
+      ENDIF.
+
+      bump( iv_branch_id = is_plan-branch_id iv_field = 'po_paid' ).
+
+    ENDLOOP.
+
   ENDMETHOD.
 
 
@@ -1220,6 +1288,48 @@ CLASS zcl_its_gen_transactions IMPLEMENTATION.
     out->write( |          rejected    : { lv_t_rejected } (on purpose)| ).
     out->write( |          failed      : { lv_t_failed }| ).
     out->write( |Purchase orders created / received : { lv_t_pocre } / { lv_t_porcv } (target { gc_po_total })| ).
+
+    "--- how the supplier debt ended up, which is what the AP aging
+    "    report will be showing ---
+    DATA lv_t_paid   TYPE i.
+    DATA lv_t_unpaid TYPE i.
+    LOOP AT mt_stats INTO DATA(ls_ap).
+      lv_t_paid   = lv_t_paid   + ls_ap-po_paid.
+      lv_t_unpaid = lv_t_unpaid + ls_ap-po_unpaid.
+    ENDLOOP.
+    out->write( |          settled     : { lv_t_paid } paid by accounting, { lv_t_unpaid } left outstanding| ).
+
+    "--- read the buckets back from the database rather than predicting
+    "    them: this is the same arithmetic ZI_ITS_AP_AGING performs, so if
+    "    the two disagree the report is wrong ---
+    SELECT FROM zits_po
+      FIELDS due_date
+      WHERE payment_status = ' ' AND overall_status = 'R'
+      INTO TABLE @DATA(lt_open).
+
+    IF lt_open IS NOT INITIAL.
+      DATA lv_b0 TYPE i.
+      DATA lv_b1 TYPE i.
+      DATA lv_b2 TYPE i.
+      DATA lv_b3 TYPE i.
+      DATA(lv_today_ap) = cl_abap_context_info=>get_system_date( ).
+
+      LOOP AT lt_open INTO DATA(ls_open).
+        DATA(lv_late) = CONV i( lv_today_ap - ls_open-due_date ).
+        IF    lv_late <= 0.  lv_b0 = lv_b0 + 1.
+        ELSEIF lv_late <= 30. lv_b1 = lv_b1 + 1.
+        ELSEIF lv_late <= 60. lv_b2 = lv_b2 + 1.
+        ELSE.                 lv_b3 = lv_b3 + 1.
+        ENDIF.
+      ENDLOOP.
+
+      out->write( || ).
+      out->write( |AP aging buckets ({ lines( lt_open ) } open payables):| ).
+      out->write( |  Not due      : { lv_b0 }| ).
+      out->write( |  1-30 days    : { lv_b1 }| ).
+      out->write( |  31-60 days   : { lv_b2 }| ).
+      out->write( |  Over 60 days : { lv_b3 }| ).
+    ENDIF.
     out->write( || ).
 
     "--- how much of the history carries a discount ---

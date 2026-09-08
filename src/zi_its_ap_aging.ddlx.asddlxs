@@ -1,15 +1,62 @@
 @Metadata.layer: #CORE
 
-annotate entity ZI_ITS_AP_AGING
-    with 
-{
-     @UI.facet: [ { id: 'General',
-                 purpose: #STANDARD,
-                 type: #IDENTIFICATION_REFERENCE,
-                 label: 'place holder Details',
-                 position: 10 } ]
-    
-    placeholderid;
+@UI: {
+  headerInfo: {
+    typeName: 'Payable',
+    typeNamePlural: 'Accounts Payable Aging',
+    title:       { type: #STANDARD, value: 'SupplierName' },
+    description: { type: #STANDARD, value: 'PONumber' }
+  },
+  // worst debts first - that is the point of an aging report
+  presentationVariant: [ { sortOrder: [ { by: 'DaysOverdue', direction: #DESC } ] } ]
+}
 
-    
-}// everything is placeholder it was not finished yet 
+annotate view ZI_ITS_AP_AGING with
+{
+  @UI.hidden: true
+  POUUID;
+
+  @UI: { lineItem: [ { position: 10, importance: #HIGH } ] }
+  PONumber;
+
+  @UI: { lineItem:       [ { position: 20, importance: #HIGH } ],
+         selectionField: [ { position: 20 } ],
+         textArrangement: #TEXT_FIRST }
+  SupplierID;
+
+  @UI.hidden: true
+  SupplierName;
+
+  @UI: { lineItem:       [ { position: 30, importance: #HIGH } ],
+         selectionField: [ { position: 10 } ],
+         textArrangement: #TEXT_FIRST }
+  BranchID;
+
+  @UI.hidden: true
+  BranchName;
+
+  @UI: { lineItem: [ { position: 40, importance: #MEDIUM } ] }
+  PaymentTerms;
+
+  @UI: { lineItem: [ { position: 50, importance: #MEDIUM } ] }
+  ReceivedDate;
+
+  @UI: { lineItem: [ { position: 60, importance: #HIGH } ] }
+  DueDate;
+
+  @UI: { lineItem: [ { position: 70, importance: #HIGH } ] }
+  DaysOverdue;
+
+  @UI: { lineItem:       [ { position: 80, importance: #HIGH, criticality: 'AgingCriticality' } ],
+         selectionField: [ { position: 30 } ] }
+  AgingBucket;
+
+  @UI.hidden: true
+  AgingCriticality;
+
+  @UI: { lineItem: [ { position: 90, importance: #HIGH } ] }
+  TotalCost;
+
+  @UI.hidden: true
+  CurrencyCode;
+}

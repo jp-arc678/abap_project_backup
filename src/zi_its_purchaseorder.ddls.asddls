@@ -31,6 +31,24 @@ define root view entity ZI_ITS_PURCHASEORDER
       total_cost            as TotalCost,
       @EndUserText.label: 'Currency'
       currency_code         as CurrencyCode,
+
+      // The arrangement agreed with the supplier when the order is raised.
+      // C = Cash, R = Bank. Decides which account the money leaves from
+      // when the debt is settled.
+      @EndUserText.label: 'Payment Method'
+      payment_method        as PaymentMethod,
+
+      // Only two payment facts are stored. Everything else about the debt -
+      // open, overdue, days remaining - is derived in ZI_ITS_PO_BASE.
+      @EndUserText.label: 'Paid'
+      @Semantics.booleanIndicator: true
+      payment_status        as PaymentStatus,
+
+      @EndUserText.label: 'Due Date'
+      due_date              as DueDate,
+
+      @EndUserText.label: 'Paid Date'
+      paid_date             as PaidDate,
       @EndUserText.label: 'Approved By'
       approved_by           as ApprovedBy,
       @EndUserText.label: 'Approved At'

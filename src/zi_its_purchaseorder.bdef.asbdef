@@ -15,16 +15,23 @@ authorization master ( global )
   association _Item { create; }
 
   field ( readonly, numbering : managed ) POUUID;
+  // PaymentStatus, DueDate and PaidDate are written by Receive and Pay,
+  // never typed. The derived fields on _Base are readonly by nature.
   field ( readonly ) PONumber, OverallStatus, ApprovalLevel, TotalCost, ApprovedBy, ApprovedAt, ReceivedDate,
                      WarehouseStaffID, BranchID,
+                     PaymentStatus, DueDate, PaidDate,
                      CreatedBy, CreatedAt, LocalLastChangedBy, LocalLastChangedAt, LastChangedAt;
-  field ( mandatory ) SupplierID;
+
+  // Both must be entered: an order with no supplier, or no agreed way of
+  // paying for it, cannot be received.
+  field ( mandatory ) SupplierID, PaymentMethod;
 
   determination setHeaderDefaults on modify { create; }
   determination assignPONumber on save { create; }
   validation validateItems          on save { create; update; }
   validation validateBranch         on save { create; update; field BranchID; }
   validation validateSupplier       on save { create; update; field SupplierID; }
+  validation validatePaymentMethod  on save { create; update; field PaymentMethod; }
   validation validateWarehouseStaff on save { create;         field WarehouseStaffID; }
   validation validateCreatorRole    on save { create; }
 
@@ -33,6 +40,17 @@ authorization master ( global )
   action ( features : instance ) Reject  result [1] $self;
   action ( features : instance ) Cancel  result [1] $self;
   action ( features : instance ) Receive result [1] $self;
+
+  // Settling the supplier debt. A second, separate economic event from the
+  // goods receipt, which is why it is its own action rather than something
+  // Receive does.
+  //
+  // EXTENSION POINT: if payments ever need to be part-settled, span several
+  // orders, or carry their own document number, this becomes a Payment BO
+  // (header + items referencing the paid orders) and this action becomes
+  // the thing that creates one. The journal posting below is already the
+  // shape that document would produce.
+  action ( features : instance ) Pay result [1] $self;
 
   draft action Activate optimized;
   draft action Discard;
@@ -43,6 +61,7 @@ authorization master ( global )
     validation validateItems;
     validation validateBranch;
     validation validateSupplier;
+    validation validatePaymentMethod;
     validation validateWarehouseStaff;
     validation validateCreatorRole;
     validation PurchaseOrderItem~validateQuantity;
@@ -53,7 +72,9 @@ authorization master ( global )
     POUUID = po_uuid;  PONumber = po_number;  BranchID = branch_id;  SupplierID = supplier_id;
     OverallStatus = overall_status;  ApprovalLevel = approval_level;  WarehouseStaffID = warehouse_staff_id;
     OrderDate = order_date;  ReceivedDate = received_date;  TotalCost = total_cost;
-    CurrencyCode = currency_code;  ApprovedBy = approved_by;  ApprovedAt = approved_at;
+    CurrencyCode = currency_code;  PaymentMethod = payment_method;
+    PaymentStatus = payment_status;  DueDate = due_date;  PaidDate = paid_date;
+    ApprovedBy = approved_by;  ApprovedAt = approved_at;
     RejectionReason = rejection_reason;  CreatedBy = created_by;  CreatedAt = created_at;
     LocalLastChangedBy = local_last_changed_by;  LocalLastChangedAt = local_last_changed_at;
     LastChangedAt = last_changed_at;

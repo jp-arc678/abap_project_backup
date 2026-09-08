@@ -39,6 +39,19 @@ define root view entity ZC_ITS_PURCHASEORDER
       @Semantics.amount.currencyCode: 'CurrencyCode'
       TotalCost,
       CurrencyCode,
+
+      // C = Cash, R = Bank - the arrangement agreed with the supplier
+      PaymentMethod,
+
+      //--- the two stored payment facts ---
+      PaymentStatus,
+      DueDate,
+      PaidDate,
+
+      //--- and the three derived from them on every read ---
+      _Base.PaymentStatusText   as PaymentStatusText,
+      _Base.DaysToDue           as DaysToDue,
+      _Base.PaymentCriticality  as PaymentCriticality,
       ApprovedBy,
       ApprovedAt,
       RejectionReason,

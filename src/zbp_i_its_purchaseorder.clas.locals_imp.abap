@@ -8,6 +8,7 @@ CLASS lhc_PurchaseOrder DEFINITION INHERITING FROM cl_abap_behavior_handler.
     METHODS validateItems    FOR VALIDATE ON SAVE    IMPORTING keys FOR PurchaseOrder~validateItems.
     METHODS validateBranch   FOR VALIDATE ON SAVE    IMPORTING keys FOR PurchaseOrder~validateBranch.
     METHODS validateSupplier FOR VALIDATE ON SAVE    IMPORTING keys FOR PurchaseOrder~validateSupplier.
+    METHODS validatePaymentMethod FOR VALIDATE ON SAVE IMPORTING keys FOR PurchaseOrder~validatePaymentMethod.
     METHODS validateWarehouseStaff FOR VALIDATE ON SAVE IMPORTING keys FOR PurchaseOrder~validateWarehouseStaff.
     METHODS validateCreatorRole    FOR VALIDATE ON SAVE IMPORTING keys FOR PurchaseOrder~validateCreatorRole.
     METHODS processLine      FOR DETERMINE ON MODIFY IMPORTING keys FOR PurchaseOrderItem~processLine.
@@ -21,10 +22,81 @@ CLASS lhc_PurchaseOrder DEFINITION INHERITING FROM cl_abap_behavior_handler.
     METHODS Reject  FOR MODIFY IMPORTING keys FOR ACTION PurchaseOrder~Reject  RESULT result.
     METHODS Cancel  FOR MODIFY IMPORTING keys FOR ACTION PurchaseOrder~Cancel  RESULT result.
     METHODS Receive FOR MODIFY IMPORTING keys FOR ACTION PurchaseOrder~Receive RESULT result.
+    METHODS Pay     FOR MODIFY IMPORTING keys FOR ACTION PurchaseOrder~Pay     RESULT result.
+
+    "--- settling supplier debt is a treasury function, not a branch one ---
+    METHODS is_accounting RETURNING VALUE(rv_ok) TYPE abap_bool.
 
 ENDCLASS.
 
 CLASS lhc_PurchaseOrder IMPLEMENTATION.
+
+*--------------------------------------------------------------------*
+* Only accounting settles supplier debt.
+*
+* Deliberately NOT zcl_its_approval=>is_in_scope: that answers "is this
+* branch mine?", which is the right question for approving a branch's
+* order and the wrong one here. Paying a supplier is a company-level
+* treasury act, and role 'A' carries no branch precisely because it acts
+* for the whole company. A branch comparison would reject every payment.
+*--------------------------------------------------------------------*
+  METHOD is_accounting.
+
+    DATA(lv_user) = to_upper( cl_abap_context_info=>get_user_technical_name( ) ).
+
+    SELECT SINGLE FROM zits_employee
+      FIELDS role_code
+      WHERE upper( user_name ) = @lv_user
+        AND is_active = 'X'
+      INTO @DATA(lv_role).
+
+    rv_ok = COND abap_bool( WHEN lv_role = 'A' THEN abap_true ELSE abap_false ).
+
+  ENDMETHOD.
+
+
+*--------------------------------------------------------------------*
+* PAYMENT METHOD - required, and only C or R.
+*
+* Not defaulted the way SalesOrder defaults to cash: how the shop settles
+* with a supplier is an arrangement somebody agrees, and it decides which
+* account the money leaves from when the debt is paid.
+*--------------------------------------------------------------------*
+  METHOD validatePaymentMethod.
+
+    READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
+      ENTITY PurchaseOrder
+        FIELDS ( PaymentMethod )
+        WITH CORRESPONDING #( keys )
+      RESULT DATA(orders).
+
+    LOOP AT orders INTO DATA(order).
+
+      IF order-PaymentMethod IS INITIAL.
+        APPEND VALUE #( %tky = order-%tky ) TO failed-purchaseorder.
+        APPEND VALUE #( %tky                   = order-%tky
+                        %element-PaymentMethod = if_abap_behv=>mk-on
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = 'Payment method must be entered' )
+                      ) TO reported-purchaseorder.
+        CONTINUE.
+      ENDIF.
+
+      IF order-PaymentMethod <> 'C' AND order-PaymentMethod <> 'R'.
+        APPEND VALUE #( %tky = order-%tky ) TO failed-purchaseorder.
+        APPEND VALUE #( %tky                   = order-%tky
+                        %element-PaymentMethod = if_abap_behv=>mk-on
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = 'Payment method must be C (cash) or R (bank)' )
+                      ) TO reported-purchaseorder.
+      ENDIF.
+
+    ENDLOOP.
+
+  ENDMETHOD.
+
 
   METHOD processLine.
     READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
@@ -70,9 +142,13 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
 
   METHOD get_instance_features.
     READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
-      ENTITY PurchaseOrder FIELDS ( OverallStatus BranchID ApprovalLevel ) WITH CORRESPONDING #( keys ) RESULT DATA(orders).
+      ENTITY PurchaseOrder FIELDS ( OverallStatus BranchID ApprovalLevel PaymentStatus )
+      WITH CORRESPONDING #( keys ) RESULT DATA(orders).
 
     DATA(current_user) = to_upper( cl_abap_context_info=>get_user_technical_name( ) ).
+
+    "--- Pay is gated on the role, not the branch: see is_accounting ---
+    DATA(may_pay) = is_accounting( ).
 
     "--- may_act: is this order's branch mine to touch at all? Same two-gate
     "    idea as SalesOrder - reading stays open, acting is scoped. ---
@@ -96,6 +172,13 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
         %action-Reject  = COND #( WHEN may_approve = abap_true THEN if_abap_behv=>fc-o-enabled ELSE if_abap_behv=>fc-o-disabled )
         %action-Cancel  = COND #( WHEN order-OverallStatus = 'D' AND may_act = abap_true THEN if_abap_behv=>fc-o-enabled ELSE if_abap_behv=>fc-o-disabled )
         %action-Receive = COND #( WHEN order-OverallStatus = 'A' AND may_act = abap_true THEN if_abap_behv=>fc-o-enabled ELSE if_abap_behv=>fc-o-disabled )
+        "--- only a received AND still-unpaid order can be settled, and only
+        "    by accounting. A cash purchase is already paid at receipt, so
+        "    its PaymentStatus is already set and Pay stays disabled. ---
+        %action-Pay     = COND #( WHEN order-OverallStatus = 'R'
+                                   AND order-PaymentStatus = abap_false
+                                   AND may_pay = abap_true
+                                  THEN if_abap_behv=>fc-o-enabled ELSE if_abap_behv=>fc-o-disabled )
       ) ).
   ENDMETHOD.
 
@@ -233,6 +316,194 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
   ENDMETHOD.
 
 
+*--------------------------------------------------------------------*
+* PAY - settle the supplier debt.
+*
+* The second of the two economic events a purchase creates. Receive
+* recorded that we owe the money; this records that it has left:
+*
+*     D 201000 Accounts Payable   the debt is discharged
+*     C cash or bank              the money goes
+*
+* Posted TODAY, deliberately unlike the receipt. A backdated receipt is
+* recording something that already happened; a payment is happening now,
+* at the moment somebody presses the button.
+*
+* EXTENSION POINT: see the Pay action in the behaviour definition - if
+* payments ever need to be partial or to span several orders, this
+* becomes a Payment document and the posting below moves into it.
+*--------------------------------------------------------------------*
+  METHOD Pay.
+
+    READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
+      ENTITY PurchaseOrder
+        FIELDS ( POUUID PONumber OverallStatus PaymentStatus
+                 TotalCost CurrencyCode BranchID PaymentMethod )
+        WITH CORRESPONDING #( keys )
+      RESULT DATA(orders).
+
+    DATA(may_pay) = is_accounting( ).
+    DATA(today)   = cl_abap_context_info=>get_system_date( ).
+
+    DATA je_creates TYPE TABLE FOR CREATE zi_its_je.
+    DATA je_items   TYPE TABLE FOR CREATE zi_its_je\_Item.
+    DATA header_updates TYPE TABLE FOR UPDATE zi_its_purchaseorder.
+
+    TYPES: BEGIN OF ty_pay_link,
+             cid     TYPE string,
+             po_uuid TYPE zits_po-po_uuid,
+           END OF ty_pay_link.
+    DATA pay_links   TYPE STANDARD TABLE OF ty_pay_link WITH EMPTY KEY.
+    DATA failed_pays TYPE STANDARD TABLE OF ty_pay_link WITH EMPTY KEY.
+
+    LOOP AT orders INTO DATA(order).
+
+      IF may_pay = abap_false.
+        APPEND VALUE #( %tky = order-%tky ) TO failed-purchaseorder.
+        APPEND VALUE #( %tky = order-%tky
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = 'Only accounting may settle supplier payments' )
+                      ) TO reported-purchaseorder.
+        CONTINUE.
+      ENDIF.
+
+      IF order-OverallStatus <> 'R'.
+        APPEND VALUE #( %tky = order-%tky ) TO failed-purchaseorder.
+        APPEND VALUE #( %tky = order-%tky
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = |{ order-PONumber } has not been received yet - nothing is owed| )
+                      ) TO reported-purchaseorder.
+        CONTINUE.
+      ENDIF.
+
+      IF order-PaymentStatus = abap_true.
+        APPEND VALUE #( %tky = order-%tky ) TO failed-purchaseorder.
+        APPEND VALUE #( %tky = order-%tky
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = |{ order-PONumber } is already paid| )
+                      ) TO reported-purchaseorder.
+        CONTINUE.
+      ENDIF.
+
+      DATA(cost_center) = zcl_its_gl_mapping=>get_cost_center_for_branch( order-BranchID ).
+      IF cost_center IS INITIAL.
+        APPEND VALUE #( %tky = order-%tky ) TO failed-purchaseorder.
+        APPEND VALUE #( %tky = order-%tky
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = |No active cost center for branch { order-BranchID }| )
+                      ) TO reported-purchaseorder.
+        CONTINUE.
+      ENDIF.
+
+      DATA(je_cid) = |PAY_{ order-PONumber }|.
+
+      APPEND VALUE #( %cid         = je_cid
+                      PostingDate  = today
+                      DocType      = 'PY'
+                      BranchID     = order-BranchID
+                      HeaderText   = |Payment { order-PONumber }|
+                      RefDocType   = 'PO'
+                      RefDocNumber = order-PONumber
+                      RefDocUUID   = order-POUUID
+                      CurrencyCode = order-CurrencyCode ) TO je_creates.
+
+      APPEND VALUE #( %cid_ref = je_cid
+                      %target  = VALUE #(
+                        ( %cid         = |{ je_cid }_1|
+                          GLAccount    = zcl_its_gl_mapping=>gc_payables
+                          DCIndicator  = 'D'
+                          Amount       = order-TotalCost
+                          CurrencyCode = order-CurrencyCode
+                          CostCenterID = cost_center
+                          LineText     = |Settle { order-PONumber }| )
+                        ( %cid         = |{ je_cid }_2|
+                          GLAccount    = zcl_its_gl_mapping=>get_payment_credit_account( order-PaymentMethod )
+                          DCIndicator  = 'C'
+                          Amount       = order-TotalCost
+                          CurrencyCode = order-CurrencyCode
+                          CostCenterID = cost_center
+                          LineText     = |Payment { order-PONumber }| ) ) ) TO je_items.
+
+      APPEND VALUE #( cid = je_cid            po_uuid = order-POUUID ) TO pay_links.
+      APPEND VALUE #( cid = |{ je_cid }_1|    po_uuid = order-POUUID ) TO pay_links.
+      APPEND VALUE #( cid = |{ je_cid }_2|    po_uuid = order-POUUID ) TO pay_links.
+
+    ENDLOOP.
+
+    "--- cross-BO create, no LOCAL MODE. DocType 'PY' makes
+    "    autoPostSystemEntry post it, so it never sits as a draft. ---
+    IF je_creates IS NOT INITIAL.
+
+      MODIFY ENTITIES OF zi_its_je
+        ENTITY JournalEntry
+          CREATE FIELDS ( PostingDate DocType BranchID HeaderText
+                          RefDocType RefDocNumber RefDocUUID CurrencyCode )
+            WITH je_creates
+          CREATE BY \_Item FIELDS ( GLAccount DCIndicator Amount CurrencyCode
+                                    CostCenterID LineText )
+            WITH je_items
+        REPORTED DATA(je_rep)
+        FAILED   DATA(je_failed).
+
+      LOOP AT je_failed-journalentry INTO DATA(jf_hdr).
+        READ TABLE pay_links WITH KEY cid = jf_hdr-%cid INTO DATA(link_hdr).
+        IF sy-subrc = 0.
+          APPEND VALUE #( po_uuid = link_hdr-po_uuid ) TO failed_pays.
+        ENDIF.
+      ENDLOOP.
+
+      LOOP AT je_failed-journalentryitem INTO DATA(jf_item).
+        READ TABLE pay_links WITH KEY cid = jf_item-%cid INTO DATA(link_item).
+        IF sy-subrc = 0.
+          APPEND VALUE #( po_uuid = link_item-po_uuid ) TO failed_pays.
+        ENDIF.
+      ENDLOOP.
+
+    ENDIF.
+
+    "--- the order is only marked paid if its journal entry was created ---
+    LOOP AT orders INTO order.
+
+      READ TABLE pay_links WITH KEY po_uuid = order-POUUID TRANSPORTING NO FIELDS.
+      IF sy-subrc <> 0.
+        CONTINUE.
+      ENDIF.
+
+      READ TABLE failed_pays WITH KEY po_uuid = order-POUUID TRANSPORTING NO FIELDS.
+      IF sy-subrc = 0.
+        APPEND VALUE #( %tky = order-%tky ) TO failed-purchaseorder.
+        APPEND VALUE #( %tky = order-%tky
+                        %msg = new_message_with_text(
+                                 severity = if_abap_behv_message=>severity-error
+                                 text     = |Payment posting failed for { order-PONumber } - not marked paid, please retry| )
+                      ) TO reported-purchaseorder.
+        CONTINUE.
+      ENDIF.
+
+      APPEND VALUE #( %tky          = order-%tky
+                      PaymentStatus = abap_true
+                      PaidDate      = today ) TO header_updates.
+
+    ENDLOOP.
+
+    IF header_updates IS NOT INITIAL.
+      MODIFY ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
+        ENTITY PurchaseOrder
+          UPDATE FIELDS ( PaymentStatus PaidDate ) WITH header_updates
+        REPORTED DATA(hdr_rep).
+    ENDIF.
+
+    READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
+      ENTITY PurchaseOrder ALL FIELDS WITH CORRESPONDING #( keys ) RESULT DATA(final).
+    result = VALUE #( FOR o IN final ( %tky = o-%tky %param = o ) ).
+
+  ENDMETHOD.
+
+
   METHOD Receive.
 
     TYPES: BEGIN OF ty_pending_receipt,
@@ -264,10 +535,13 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
     TYPES: BEGIN OF ty_recv_date,
              po_uuid   TYPE zits_po-po_uuid,
              recv_date TYPE d,
+             due_date  TYPE d,
+             paid      TYPE abap_boolean,
            END OF ty_recv_date.
 
     READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
-      ENTITY PurchaseOrder FIELDS ( OverallStatus POUUID PONumber CurrencyCode TotalCost BranchID OrderDate )
+      ENTITY PurchaseOrder FIELDS ( OverallStatus POUUID PONumber CurrencyCode TotalCost BranchID OrderDate
+                                    SupplierID PaymentMethod )
       WITH CORRESPONDING #( keys ) RESULT DATA(orders).
 
     DATA header_updates   TYPE TABLE FOR UPDATE zi_its_purchaseorder.
@@ -327,8 +601,27 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
         ENDIF.
       ENDIF.
 
+      "--- The supplier's own terms decide whether this receipt creates a
+      "    debt at all. CASH settles on the spot; everything else - N30,
+      "    N60, or a term we do not recognise - becomes a payable, so an
+      "    unknown term can never block a goods receipt. ---
+      SELECT SINGLE FROM zits_partner
+        FIELDS payment_terms
+        WHERE partner_id = @order-SupplierID
+        INTO @DATA(lv_terms).
+
+      DATA(lv_credit_days) = zcl_its_gl_mapping=>get_credit_days( lv_terms ).
+      DATA(lv_is_cash)     = COND abap_bool(
+                               WHEN lv_terms = zcl_its_gl_mapping=>gc_terms_cash
+                               THEN abap_true ELSE abap_false ).
+
+      DATA lv_due_date TYPE d.
+      lv_due_date = lv_recv_date + lv_credit_days.
+
       APPEND VALUE #( po_uuid   = order-POUUID
-                      recv_date = lv_recv_date ) TO recv_dates.
+                      recv_date = lv_recv_date
+                      due_date  = lv_due_date
+                      paid      = lv_is_cash ) TO recv_dates.
 
       READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
         ENTITY PurchaseOrder BY \_Item FIELDS ( ProductID Quantity Unit )
@@ -431,7 +724,26 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
                       RefDocUUID   = order-POUUID
                       CurrencyCode = order-CurrencyCode ) TO je_creates.
 
-      "--- two lines: inventory goes up, the supplier is owed the money ---
+      "--- Two lines either way; only the credit side differs.
+      "
+      "    On CASH terms the money leaves at the same moment the goods
+      "    arrive, so the entry never touches payables - no debt ever
+      "    existed to record. On credit terms the supplier is owed, and
+      "    the Pay action later clears that payable against the same
+      "    account this order's payment method names. ---
+      READ TABLE recv_dates WITH KEY po_uuid = order-POUUID INTO DATA(rd_terms).
+      DATA(paid_now) = COND abap_bool( WHEN sy-subrc = 0 THEN rd_terms-paid ELSE abap_false ).
+
+      DATA(credit_account) = COND zits_glacct-gl_account(
+        WHEN paid_now = abap_true
+        THEN zcl_its_gl_mapping=>get_payment_credit_account( order-PaymentMethod )
+        ELSE zcl_its_gl_mapping=>gc_payables ).
+
+      DATA(credit_text) = COND string(
+        WHEN paid_now = abap_true
+        THEN |Payment for { order-PONumber }|
+        ELSE |Supplier liability { order-PONumber }| ).
+
       APPEND VALUE #( %cid_ref = je_cid
                       %target  = VALUE #(
                         ( %cid         = |{ je_cid }_1|
@@ -442,12 +754,12 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
                           CostCenterID = cost_center
                           LineText     = |Goods receipt { order-PONumber }| )
                         ( %cid         = |{ je_cid }_2|
-                          GLAccount    = zcl_its_gl_mapping=>gc_payables
+                          GLAccount    = credit_account
                           DCIndicator  = 'C'
                           Amount       = order-TotalCost
                           CurrencyCode = order-CurrencyCode
                           CostCenterID = cost_center
-                          LineText     = |Supplier liability { order-PONumber }| ) ) ) TO je_items.
+                          LineText     = credit_text ) ) ) TO je_items.
 
       "--- header and both line cids point back at this order ---
       APPEND VALUE #( cid = je_cid            po_uuid = order-POUUID ) TO je_links.
@@ -574,8 +886,15 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
       READ TABLE recv_dates WITH KEY po_uuid = order-POUUID INTO DATA(rd_led).
       DATA(led_posting_date) = COND d( WHEN sy-subrc = 0 THEN rd_led-recv_date ELSE today ).
 
-      APPEND VALUE #( %tky = order-%tky OverallStatus = 'R'
-                      ReceivedDate = led_posting_date ) TO header_updates.
+      "--- the two stored payment facts. Everything else about the debt is
+      "    derived in ZI_ITS_PO_BASE against the current date. ---
+      APPEND VALUE #( %tky          = order-%tky
+                      OverallStatus = 'R'
+                      ReceivedDate  = led_posting_date
+                      PaymentStatus = rd_led-paid
+                      DueDate       = rd_led-due_date
+                      PaidDate      = COND d( WHEN rd_led-paid = abap_true
+                                              THEN rd_led-recv_date ) ) TO header_updates.
     ENDLOOP.
 
     IF stock_updates IS NOT INITIAL.
@@ -588,7 +907,9 @@ CLASS lhc_PurchaseOrder IMPLEMENTATION.
     ENDIF.
     IF header_updates IS NOT INITIAL.
       MODIFY ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
-        ENTITY PurchaseOrder UPDATE FIELDS ( OverallStatus ReceivedDate ) WITH header_updates REPORTED DATA(hr).
+        ENTITY PurchaseOrder UPDATE FIELDS ( OverallStatus ReceivedDate
+                                             PaymentStatus DueDate PaidDate )
+        WITH header_updates REPORTED DATA(hr).
     ENDIF.
     READ ENTITIES OF zi_its_purchaseorder IN LOCAL MODE
       ENTITY PurchaseOrder ALL FIELDS WITH CORRESPONDING #( keys ) RESULT DATA(final).
