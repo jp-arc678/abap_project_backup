@@ -20,13 +20,15 @@ annotate view ZC_ITS_PURCHASEORDER with
                 { type: #FOR_ACTION, dataAction: 'Approve', label: 'Approve' },
                 { type: #FOR_ACTION, dataAction: 'Reject',  label: 'Reject' },
                 { type: #FOR_ACTION, dataAction: 'Cancel',  label: 'Cancel' },
-                { type: #FOR_ACTION, dataAction: 'Receive', label: 'Receive' } ],
+                { type: #FOR_ACTION, dataAction: 'Receive', label: 'Receive' },
+                { type: #FOR_ACTION, dataAction: 'Pay',     label: 'Pay' } ],
     identification: [ { position: 10 },
                 { type: #FOR_ACTION, dataAction: 'Submit',  label: 'Submit' },
                 { type: #FOR_ACTION, dataAction: 'Approve', label: 'Approve' },
                 { type: #FOR_ACTION, dataAction: 'Reject',  label: 'Reject' },
                 { type: #FOR_ACTION, dataAction: 'Cancel',  label: 'Cancel' },
-                { type: #FOR_ACTION, dataAction: 'Receive', label: 'Receive' } ],
+                { type: #FOR_ACTION, dataAction: 'Receive', label: 'Receive' },
+                { type: #FOR_ACTION, dataAction: 'Pay',     label: 'Pay' } ],
     selectionField: [ { position: 10 } ]
   }
   PONumber;
