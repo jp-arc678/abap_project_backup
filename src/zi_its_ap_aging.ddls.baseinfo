@@ -3,6 +3,8 @@
 {
 "FROM":
 [
+"ZITS_BRANCH",
+"ZITS_PARTNER",
 "ZITS_PO"
 ],
 "ASSOCIATED":

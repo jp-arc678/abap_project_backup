@@ -1,0 +1,34 @@
+{
+  "formatVersion": "2",
+  "header": {
+    "description": "display current account payable",
+    "originalLanguage": "en",
+    "abapLanguageVersion": "cloudDevelopment"
+  },
+  "generalInformation": {
+    "appType": "ui5",
+    "catalogId": "SAP_TC_UI5_REPO_UIAD",
+    "targetMappingTitle": "zits_apaging"
+  },
+  "ui5AppDetails": {
+    "appId": "zitsapaging"
+  },
+  "navigation": {
+    "targetMappingId": "ZITS_APAGING_UI5R_TM",
+    "semanticObject": "APAging",
+    "action": "display",
+    "desktop": true,
+    "tablet": true,
+    "phone": true
+  },
+  "tiles": [
+    {
+      "id": "ZITS_APAGING_UI5R_AL",
+      "tileType": "static",
+      "isDefault": true,
+      "standard": {
+        "title": "zits_apaging"
+      }
+    }
+  ]
+}
